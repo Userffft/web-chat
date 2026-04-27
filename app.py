@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
+from flask import Flask, render_template_string, request, session, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
 import os
@@ -14,12 +14,10 @@ USERS_FILE = 'users.json'
 MESSAGES_FILE = 'messages.json'
 ROOMS_FILE = 'rooms.json'
 
-# Функции для работы с данными
 def load_users():
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r') as f:
             return json.load(f)
-    # При первом запуске создаём владельца MrAizex
     return {
         'MrAizex': {
             'password': hashlib.sha256('admin123'.encode()).hexdigest(),
@@ -271,11 +269,7 @@ CHAT_TEMPLATE = '''
             height: 100vh;
             overflow: hidden;
         }
-        .app {
-            display: flex;
-            height: 100vh;
-        }
-        /* Sidebar */
+        .app { display: flex; height: 100vh; }
         .sidebar {
             width: 300px;
             background: rgba(255,255,255,0.95);
@@ -291,38 +285,11 @@ CHAT_TEMPLATE = '''
             color: white;
             text-align: center;
         }
-        .user-avatar {
-            font-size: 64px;
-            margin-bottom: 12px;
-        }
-        .user-name {
-            font-size: 1.3rem;
-            font-weight: 700;
-        }
-        .user-role {
-            font-size: 0.8rem;
-            opacity: 0.9;
-            margin-top: 4px;
-        }
-        .online-status {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            background: #10b981;
-            border-radius: 50%;
-            margin-left: 8px;
-        }
-        .sidebar-section {
-            padding: 16px 20px;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .sidebar-title {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #374151;
-            display: flex;
-            justify-content: space-between;
-        }
+        .user-avatar { font-size: 64px; margin-bottom: 12px; }
+        .user-name { font-size: 1.3rem; font-weight: 700; }
+        .user-role { font-size: 0.8rem; opacity: 0.9; margin-top: 4px; }
+        .sidebar-section { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; }
+        .sidebar-title { font-weight: 600; margin-bottom: 12px; color: #374151; display: flex; justify-content: space-between; }
         .room-item, .user-item {
             padding: 10px 12px;
             border-radius: 12px;
@@ -343,28 +310,9 @@ CHAT_TEMPLATE = '''
             display: flex;
             gap: 8px;
         }
-        .create-room input {
-            flex: 1;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 20px;
-            outline: none;
-        }
-        .create-room button {
-            background: #4f46e5;
-            color: white;
-            border: none;
-            border-radius: 20px;
-            padding: 8px 16px;
-            cursor: pointer;
-        }
-        /* Main chat */
-        .chat-main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: rgba(255,255,255,0.95);
-        }
+        .create-room input { flex: 1; padding: 8px 12px; border: none; border-radius: 20px; outline: none; }
+        .create-room button { background: #4f46e5; color: white; border: none; border-radius: 20px; padding: 8px 16px; cursor: pointer; }
+        .chat-main { flex: 1; display: flex; flex-direction: column; background: rgba(255,255,255,0.95); }
         .chat-header {
             padding: 16px 24px;
             border-bottom: 1px solid #e5e7eb;
@@ -373,13 +321,7 @@ CHAT_TEMPLATE = '''
             align-items: center;
             background: white;
         }
-        .chat-room-name {
-            font-size: 1.3rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
+        .chat-room-name { font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: 12px; }
         .messages-area {
             flex: 1;
             overflow-y: auto;
@@ -426,33 +368,11 @@ CHAT_TEMPLATE = '''
             margin-bottom: 4px;
             flex-wrap: wrap;
         }
-        .message-name {
-            font-weight: 700;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-        .message-time {
-            font-size: 0.65rem;
-            opacity: 0.7;
-        }
-        .message-text {
-            word-wrap: break-word;
-            line-height: 1.4;
-        }
-        .message-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 6px;
-        }
-        .msg-action {
-            background: none;
-            border: none;
-            font-size: 0.7rem;
-            cursor: pointer;
-            opacity: 0.6;
-            padding: 2px 6px;
-            border-radius: 12px;
-        }
+        .message-name { font-weight: 700; font-size: 0.85rem; cursor: pointer; }
+        .message-time { font-size: 0.65rem; opacity: 0.7; }
+        .message-text { word-wrap: break-word; line-height: 1.4; }
+        .message-actions { display: flex; gap: 8px; margin-top: 6px; }
+        .msg-action { background: none; border: none; font-size: 0.7rem; cursor: pointer; opacity: 0.6; padding: 2px 6px; border-radius: 12px; }
         .msg-action:hover { opacity: 1; background: rgba(0,0,0,0.1); }
         .system-message {
             text-align: center;
@@ -510,7 +430,6 @@ CHAT_TEMPLATE = '''
             <div class="user-name">{{ username }}{% if role == 'owner' %}<span class="badge-owner">ВЛАДЕЛЕЦ</span>{% elif role == 'admin' %}<span class="badge-admin">ADMIN</span>{% elif role == 'moderator' %}<span class="badge-moder">MODER</span>{% endif %}</div>
             <div class="user-role">{{ role_display }}</div>
         </div>
-        
         <div class="sidebar-section">
             <div class="sidebar-title"><i class="fas fa-door-open"></i> Комнаты</div>
             <div id="roomsList"></div>
@@ -521,22 +440,18 @@ CHAT_TEMPLATE = '''
             </div>
             {% endif %}
         </div>
-        
         <div class="sidebar-section">
             <div class="sidebar-title"><i class="fas fa-users"></i> Пользователи</div>
             <div id="usersList"></div>
         </div>
     </div>
-    
     <div class="chat-main">
         <div class="chat-header">
             <div class="chat-room-name"><i class="fas fa-hashtag"></i> <span id="currentRoomSpan">Общая</span></div>
             <div><i class="fas fa-search" id="searchBtn" style="cursor: pointer;"></i></div>
         </div>
-        
         <div id="messages" class="messages-area"></div>
         <div id="typingIndicator" class="typing-indicator"></div>
-        
         <div class="input-area">
             <button id="emojiBtn"><i class="far fa-smile"></i></button>
             <input type="text" id="messageInput" placeholder="Сообщение...">
@@ -544,7 +459,6 @@ CHAT_TEMPLATE = '''
         </div>
     </div>
 </div>
-
 <script>
     let socket = null;
     let currentRoom = 'Общая';
@@ -558,7 +472,7 @@ CHAT_TEMPLATE = '''
     const sendBtn = document.getElementById('sendBtn');
     const typingIndicator = document.getElementById('typingIndicator');
     
-    function addMessage(id, name, text, time, isOwn, msgRole, avatar = '💬') {
+    function addMessage(id, name, text, time, isOwn, msgRole, avatar) {
         const div = document.createElement('div');
         div.className = `message ${isOwn ? 'message-own' : ''}`;
         div.dataset.id = id;
@@ -567,7 +481,7 @@ CHAT_TEMPLATE = '''
         else if(msgRole === 'admin') roleBadge = '<span class="badge-admin">ADM</span>';
         else if(msgRole === 'moderator') roleBadge = '<span class="badge-moder">MOD</span>';
         div.innerHTML = `
-            <div class="message-avatar">${avatar}</div>
+            <div class="message-avatar">${avatar || '💬'}</div>
             <div class="message-content">
                 <div class="message-header">
                     <span class="message-name">${escapeHtml(name)}${roleBadge}</span>
@@ -576,7 +490,7 @@ CHAT_TEMPLATE = '''
                 <div class="message-text">${escapeHtml(text)}</div>
                 ${(role === 'owner' || role === 'admin' || (role === 'moderator' && !isOwn) || isOwn) ? 
                     `<div class="message-actions">
-                        ${(role === 'owner' || role === 'admin' || (role === 'moderator' && !isOwn) || isOwn) ? `<button class="msg-action" onclick="deleteMessage('${id}')"><i class="fas fa-trash"></i></button>` : ''}
+                        <button class="msg-action" onclick="deleteMessage('${id}')"><i class="fas fa-trash"></i></button>
                         ${(!isOwn && role === 'owner') ? `<button class="msg-action" onclick="banUser('${name}')"><i class="fas fa-ban"></i></button>` : ''}
                     </div>` : ''}
             </div>
@@ -605,7 +519,7 @@ CHAT_TEMPLATE = '''
     
     window.banUser = function(user) {
         if(confirm(`Заблокировать пользователя ${user}?`)) {
-            socket.emit('ban_user', { username: user });
+            socket.emit('ban_user', { username: user, room: currentRoom });
         }
     };
     
@@ -635,7 +549,7 @@ CHAT_TEMPLATE = '''
     
     socket.on('rooms_list', (roomsData) => {
         const container = document.getElementById('roomsList');
-        container.innerHTML = roomsData.map(r => `<div class="room-item ${r === currentRoom ? 'active' : ''}" data-room="${r}">🏠 ${r}</div>`).join('');
+        container.innerHTML = roomsData.map(r => `<div class="room-item ${r === currentRoom ? 'active' : ''}" data-room="${r}">🏠 ${escapeHtml(r)}</div>`).join('');
         document.querySelectorAll('.room-item').forEach(el => {
             el.onclick = () => {
                 const newRoom = el.dataset.room;
@@ -850,6 +764,7 @@ def handle_ban(data):
     if not username or users[username]['role'] not in ['owner', 'admin']:
         return
     target = data['username']
+    room = data.get('room', 'Общая')
     if target in users and users[target]['role'] != 'owner':
         users[target]['banned'] = True
         save_users(users)
@@ -870,4 +785,32 @@ def handle_switch_room(data):
     old_room = data['old_room']
     new_room = data['new_room']
     leave_room(old_room)
-    join_room(new
+    join_room(new_room)
+    emit('history', messages.get(new_room, []), to=request.sid)
+
+@socketio.on('create_room')
+def handle_create_room(data):
+    username = session.get('username')
+    if not username or users[username]['role'] not in ['owner', 'admin']:
+        return
+    new_room = data['room'].strip()
+    if new_room and new_room not in rooms:
+        rooms.append(new_room)
+        messages[new_room] = []
+        save_rooms(rooms)
+        save_messages(messages)
+        emit('rooms_list', rooms, broadcast=True)
+
+@socketio.on('get_rooms')
+def handle_get_rooms():
+    emit('rooms_list', rooms)
+
+@socketio.on('get_users')
+def handle_get_users():
+    users_list = [{'name': name, 'role': data['role'], 'avatar': data.get('avatar', '👤')} 
+                  for name, data in users.items() if not data.get('banned')]
+    emit('users_list', users_list, broadcast=True)
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port, allow_unsafe
