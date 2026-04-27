@@ -19,8 +19,8 @@ def load_users():
         with open(USERS_FILE, 'r') as f:
             return json.load(f)
     return {
-        'MrAizex': {
-            'password': hashlib.sha256('admin123'.encode()).hexdigest(),
+        'dimooon': {
+            'password': hashlib.sha256('1111'.encode()).hexdigest(),
             'role': 'owner',
             'avatar': '👑',
             'banned': False,
