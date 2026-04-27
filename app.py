@@ -15,6 +15,7 @@ USERS_FILE = os.path.join(DB_PATH, 'users.json')
 MESSAGES_FILE = os.path.join(DB_PATH, 'messages.json')
 ROOMS_FILE = os.path.join(DB_PATH, 'rooms.json')
 DMS_FILE = os.path.join(DB_PATH, 'dms.json')
+REPORTS_FILE = os.path.join(DB_PATH, 'reports.json')
 
 app = Flask(__name__)
 app.secret_key = 'secret-key-2024'
@@ -32,11 +33,11 @@ def load_users():
         'MrAizex': {
             'password': hashlib.sha256('admin123'.encode()).hexdigest(),
             'role': 'owner',
-            'avatar': '👑',
             'avatar_base64': None,
             'bio': 'Владелец',
             'friends': [],
-            'requests': [],
+            'requests': [],      # исходящие заявки (кто кому отправил)
+            'friend_requests': [], # входящие заявки (кто отправил текущему)
             'banned': False,
             'theme': 'light',
             'user_id': generate_short_id(),
@@ -47,11 +48,11 @@ def load_users():
         'dimooon': {
             'password': hashlib.sha256('1111'.encode()).hexdigest(),
             'role': 'admin',
-            'avatar': '😎',
             'avatar_base64': None,
             'bio': 'Админ',
             'friends': [],
             'requests': [],
+            'friend_requests': [],
             'banned': False,
             'theme': 'light',
             'user_id': generate_short_id(),
@@ -95,10 +96,21 @@ def save_dms(d):
     with open(DMS_FILE, 'w') as f:
         json.dump(d, f)
 
+def load_reports():
+    if os.path.exists(REPORTS_FILE):
+        with open(REPORTS_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_reports(r):
+    with open(REPORTS_FILE, 'w') as f:
+        json.dump(r, f)
+
 users = load_users()
 messages = load_messages()
 rooms = load_rooms()
 dms = load_dms()
+reports = load_reports()
 
 # -------------------------- HTML ШАБЛОНЫ --------------------------
 LOGIN_HTML = '''<!DOCTYPE html>
@@ -128,13 +140,13 @@ REGISTER_HTML = '''<!DOCTYPE html>
 CHAT_HTML = '''<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"><title>Чатик</title><script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script><style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#1e1b4b,#4c1d95);height:100vh;display:flex;overflow:hidden;transition:background 0.3s}body.dark{background:#0f0f0f}.sidebar{width:280px;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-right:1px solid rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow-y:auto;transition:background 0.3s,color 0.3s}body.dark .sidebar{background:#1a1a1a;color:#fff;border-color:#333}.user-card{text-align:center;padding:24px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;margin-bottom:16px}body.dark .user-card{background:linear-gradient(135deg,#4f46e5,#6d28d9)}.user-avatar{width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;overflow:hidden}.user-avatar img{width:100%;height:100%;object-fit:cover}.user-name{font-size:18px;font-weight:700}.user-bio{font-size:11px;opacity:0.85;margin-top:5px}.user-id{font-size:9px;opacity:0.6;margin-top:3px}.section-title{font-weight:600;padding:16px 20px 8px 20px;color:#475569;font-size:12px;text-transform:uppercase}body.dark .section-title{color:#94a3b8}.room-item,.user-item{padding:12px 20px;margin:4px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:0.2s}.room-item:hover,.user-item:hover{background:rgba(0,0,0,0.05)}body.dark .room-item:hover,body.dark .user-item:hover{background:rgba(255,255,255,0.1)}.room-item.active{background:#4f46e5;color:#fff}.delete-room{background:#ef4444;border:none;border-radius:20px;padding:4px 8px;color:#fff;margin-left:auto;cursor:pointer;font-size:10px}.add-room{display:flex;gap:8px;margin:12px}.add-room input{flex:1;padding:10px;border-radius:40px;border:1px solid #ddd;outline:none}body.dark .add-room input{background:#333;color:#fff;border-color:#555}.add-room button{background:#4f46e5;color:#fff;border:none;border-radius:40px;padding:8px 20px;cursor:pointer}.chat-area{flex:1;display:flex;flex-direction:column;background:#fff;transition:background 0.3s}body.dark .chat-area{background:#0a0a0a}.chat-header{padding:16px 24px;background:#fff;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}body.dark .chat-header{background:#1a1a1a;border-color:#333;color:#fff}.messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:8px}.message{display:flex;gap:10px;align-items:flex-start}.message-own{justify-content:flex-end}@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.message-avatar{width:36px;height:36px;border-radius:50%;background:#4f46e5;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0;overflow:hidden}.message-avatar img{width:100%;height:100%;object-fit:cover}.message-content{background:#f1f5f9;padding:8px 12px;border-radius:18px;max-width:65%;word-break:break-word;position:relative}body.dark .message-content{background:#2a2a2a;color:#e2e8f0}.message-own .message-content{background:#4f46e5;color:#fff}.message-name{font-weight:700;font-size:12px;display:flex;align-items:center;gap:6px;margin-bottom:2px}.message-time{font-size:9px;opacity:0.6;margin-left:6px}.message-text{margin-top:2px;font-size:14px;line-height:1.4}.message-actions{position:absolute;right:-28px;top:4px;display:flex;gap:4px;opacity:0;transition:opacity 0.2s}.message:hover .message-actions{opacity:1}.delete-msg{background:#374151;border:none;border-radius:50%;width:24px;height:24px;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:transform 0.1s}.delete-msg:active{transform:scale(0.9)}.badge-owner{background:#ef4444;font-size:8px;padding:2px 6px;border-radius:20px}.badge-admin{background:#10b981;font-size:8px;padding:2px 6px;border-radius:20px}.online-dot{width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;margin-right:8px}.system-msg{text-align:center;font-size:11px;color:#64748b;padding:6px;margin:4px 0}.typing{padding:6px 24px;font-size:11px;color:#64748b;font-style:italic}.input-area{display:flex;gap:12px;padding:12px 20px;background:#fff;border-top:1px solid #eee}body.dark .input-area{background:#1a1a1a;border-color:#333}.input-area input{flex:1;padding:12px 16px;border:2px solid #e2e8f0;border-radius:40px;outline:none;font-size:14px}body.dark .input-area input{background:#2a2a2a;color:#fff;border-color:#444}.input-area button{background:#4f46e5;border:none;border-radius:50%;width:44px;height:44px;color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:transform 0.1s}.input-area button:active{transform:scale(0.95)}.btn-settings,.btn-logout{margin:8px 12px;padding:12px;border-radius:20px;cursor:pointer;border:none;font-weight:500;transition:transform 0.1s}.btn-settings:active,.btn-logout:active{transform:scale(0.97)}.btn-settings{background:#e0e7ff;color:#4f46e5}body.dark .btn-settings{background:#2a2a2a;color:#818cf8}.btn-logout{background:#fee2e2;color:#dc2626}body.dark .btn-logout{background:#2a2a2a;color:#f87171}.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:1000}.modal-content{background:#fff;border-radius:28px;padding:24px;max-width:450px;width:90%;max-height:80vh;overflow-y:auto}body.dark .modal-content{background:#1a1a1a;color:#fff}.modal-content input,.modal-content textarea,.modal-content select{width:100%;padding:12px;margin:8px 0;border-radius:24px;border:1px solid #ddd;outline:none}body.dark .modal-content input,body.dark .modal-content textarea,body.dark .modal-content select{background:#2a2a2a;border-color:#444;color:#fff}.modal-content button{background:#4f46e5;color:#fff;border:none;padding:12px;border-radius:24px;width:100%;cursor:pointer;margin-top:8px;transition:transform 0.1s}.modal-content button:active{transform:scale(0.98)}.close{float:right;font-size:24px;cursor:pointer}.emoji-picker{position:absolute;bottom:80px;left:20px;background:#fff;border-radius:20px;padding:12px;display:none;grid-template-columns:repeat(6,1fr);gap:8px;box-shadow:0 10px 25px rgba(0,0,0,0.15);z-index:1000}body.dark .emoji-picker{background:#1a1a1a}.emoji{font-size:28px;cursor:pointer;text-align:center;padding:6px;border-radius:12px}.notify-btn{position:relative;background:none;border:none;cursor:pointer;font-size:20px;padding:8px;border-radius:50%}.notify-badge{position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;font-size:10px;min-width:18px;height:18px;border-radius:20px;display:none;align-items:center;justify-content:center}.friend-request-item{display:flex;justify-content:space-between;align-items:center;padding:12px;margin:8px 0;background:#f1f5f9;border-radius:20px}body.dark .friend-request-item{background:#2a2a2a}.profile-avatar{width:100px;height:100px;border-radius:50%;margin:0 auto 12px;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden}.profile-avatar img{width:100%;height:100%;object-fit:cover}.profile-name{font-size:20px;font-weight:700;text-align:center;margin-bottom:4px}.profile-role{text-align:center;font-size:12px;color:#6b7280;margin-bottom:8px}.profile-id{text-align:center;font-size:11px;color:#94a3b8;margin-bottom:16px;font-family:monospace;cursor:pointer}.profile-bio{background:#f1f5f9;padding:12px;border-radius:20px;margin:16px 0;font-size:14px}body.dark .profile-bio{background:#2a2a2a}.profile-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.profile-actions button{flex:1;padding:10px;border-radius:24px;border:none;cursor:pointer;font-weight:500;transition:transform 0.1s}.profile-actions button:active{transform:scale(0.97)}.toast{position:fixed;bottom:20px;right:20px;background:#4f46e5;color:#fff;padding:12px 20px;border-radius:40px;z-index:2000;animation:slideIn 0.3s;box-shadow:0 5px 15px rgba(0,0,0,0.2)}@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}.file-message{background:rgba(79,70,229,0.1);padding:6px 10px;border-radius:16px;display:inline-flex;align-items:center;gap:8px}.file-message a{color:#4f46e5;text-decoration:none}.image-preview{max-width:180px;max-height:180px;border-radius:12px;cursor:pointer;margin-top:4px}.audio-player{max-width:200px;margin-top:4px}@media(max-width:680px){.sidebar{width:240px}.message-content{max-width:75%}}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#1e1b4b,#4c1d95);height:100vh;display:flex;overflow:hidden;transition:background 0.3s}body.dark{background:#0f0f0f}.sidebar{width:280px;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-right:1px solid rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow-y:auto;transition:background 0.3s,color 0.3s}body.dark .sidebar{background:#1a1a1a;color:#fff;border-color:#333}.user-card{text-align:center;padding:24px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;margin-bottom:16px}body.dark .user-card{background:linear-gradient(135deg,#4f46e5,#6d28d9)}.user-avatar{width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;overflow:hidden}.user-avatar img{width:100%;height:100%;object-fit:cover}.user-name{font-size:18px;font-weight:700}.user-bio{font-size:11px;opacity:0.85;margin-top:5px}.user-id{font-size:9px;opacity:0.6;margin-top:3px}.section-title{font-weight:600;padding:16px 20px 8px 20px;color:#475569;font-size:12px;text-transform:uppercase}body.dark .section-title{color:#94a3b8}.room-item,.user-item{padding:12px 20px;margin:4px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:0.2s}.room-item:hover,.user-item:hover{background:rgba(0,0,0,0.05)}body.dark .room-item:hover,body.dark .user-item:hover{background:rgba(255,255,255,0.1)}.room-item.active{background:#4f46e5;color:#fff}.delete-room{background:#ef4444;border:none;border-radius:20px;padding:4px 8px;color:#fff;margin-left:auto;cursor:pointer;font-size:10px}.add-room{display:flex;gap:8px;margin:12px}.add-room input{flex:1;padding:10px;border-radius:40px;border:1px solid #ddd;outline:none}body.dark .add-room input{background:#333;color:#fff;border-color:#555}.add-room button{background:#4f46e5;color:#fff;border:none;border-radius:40px;padding:8px 20px;cursor:pointer}.chat-area{flex:1;display:flex;flex-direction:column;background:#fff;transition:background 0.3s}body.dark .chat-area{background:#0a0a0a}.chat-header{padding:16px 24px;background:#fff;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}body.dark .chat-header{background:#1a1a1a;border-color:#333;color:#fff}.room-name-btn{background:none;border:none;font-weight:600;font-size:1rem;cursor:pointer;color:inherit}.messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:8px;will-change:transform}.message{display:flex;gap:10px;align-items:flex-start;animation:fadeIn 0.2s ease-out}.message-own{justify-content:flex-end}@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.message-avatar{width:36px;height:36px;border-radius:50%;background:#4f46e5;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0;overflow:hidden}.message-avatar img{width:100%;height:100%;object-fit:cover}.message-content{background:#f1f5f9;padding:8px 12px;border-radius:18px;max-width:65%;word-break:break-word;position:relative}body.dark .message-content{background:#2a2a2a;color:#e2e8f0}.message-own .message-content{background:#4f46e5;color:#fff}.message-name{font-weight:700;font-size:12px;display:flex;align-items:center;gap:6px;margin-bottom:2px}.message-time{font-size:9px;opacity:0.6;margin-left:6px}.message-text{margin-top:2px;font-size:14px;line-height:1.4}.message-actions{position:absolute;right:-28px;top:4px;display:flex;gap:4px;opacity:0;transition:opacity 0.2s}.message:hover .message-actions{opacity:1}.delete-msg{background:#374151;border:none;border-radius:50%;width:24px;height:24px;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:transform 0.1s}.delete-msg:active{transform:scale(0.9)}.badge-owner{background:#ef4444;font-size:8px;padding:2px 6px;border-radius:20px}.badge-admin{background:#10b981;font-size:8px;padding:2px 6px;border-radius:20px}.online-dot{width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;margin-right:8px}.system-msg{text-align:center;font-size:11px;color:#64748b;padding:6px;margin:4px 0}.typing{padding:6px 24px;font-size:11px;color:#64748b;font-style:italic}.input-area{display:flex;gap:8px;padding:12px 20px;background:#fff;border-top:1px solid #eee;align-items:center}body.dark .input-area{background:#1a1a1a;border-color:#333}.input-area input{flex:1;padding:12px 16px;border:2px solid #e2e8f0;border-radius:40px;outline:none;font-size:14px}body.dark .input-area input{background:#2a2a2a;color:#fff;border-color:#444}.input-area button{background:#4f46e5;border:none;border-radius:50%;width:44px;height:44px;color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:transform 0.1s}.input-area button:active{transform:scale(0.95)}.voice-preview{background:#e0e7ff;padding:8px 12px;border-radius:40px;display:inline-flex;align-items:center;gap:12px;margin-right:8px}body.dark .voice-preview{background:#334155}.btn-settings,.btn-logout{margin:8px 12px;padding:12px;border-radius:20px;cursor:pointer;border:none;font-weight:500;transition:transform 0.1s}.btn-settings:active,.btn-logout:active{transform:scale(0.97)}.btn-settings{background:#e0e7ff;color:#4f46e5}body.dark .btn-settings{background:#2a2a2a;color:#818cf8}.btn-logout{background:#fee2e2;color:#dc2626}body.dark .btn-logout{background:#2a2a2a;color:#f87171}.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:1000}.modal-content{background:#fff;border-radius:28px;padding:24px;max-width:450px;width:90%;max-height:80vh;overflow-y:auto}body.dark .modal-content{background:#1a1a1a;color:#fff}.modal-content input,.modal-content textarea,.modal-content select{width:100%;padding:12px;margin:8px 0;border-radius:24px;border:1px solid #ddd;outline:none}body.dark .modal-content input,body.dark .modal-content textarea,body.dark .modal-content select{background:#2a2a2a;border-color:#444;color:#fff}.modal-content button{background:#4f46e5;color:#fff;border:none;padding:12px;border-radius:24px;width:100%;cursor:pointer;margin-top:8px;transition:transform 0.1s}.modal-content button:active{transform:scale(0.98)}.close{float:right;font-size:24px;cursor:pointer}.emoji-picker{position:absolute;bottom:80px;left:20px;background:#fff;border-radius:20px;padding:12px;display:none;grid-template-columns:repeat(6,1fr);gap:8px;box-shadow:0 10px 25px rgba(0,0,0,0.15);z-index:1000}body.dark .emoji-picker{background:#1a1a1a}.emoji{font-size:28px;cursor:pointer;text-align:center;padding:6px;border-radius:12px}.notify-btn{position:relative;background:none;border:none;cursor:pointer;font-size:20px;padding:8px;border-radius:50%}.notify-badge{position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;font-size:10px;min-width:18px;height:18px;border-radius:20px;display:none;align-items:center;justify-content:center}.friend-request-item{display:flex;justify-content:space-between;align-items:center;padding:12px;margin:8px 0;background:#f1f5f9;border-radius:20px}body.dark .friend-request-item{background:#2a2a2a}.profile-avatar{width:100px;height:100px;border-radius:50%;margin:0 auto 12px;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden}.profile-avatar img{width:100%;height:100%;object-fit:cover}.profile-name{font-size:20px;font-weight:700;text-align:center;margin-bottom:4px}.profile-role{text-align:center;font-size:12px;color:#6b7280;margin-bottom:8px}.profile-id{text-align:center;font-size:11px;color:#94a3b8;margin-bottom:16px;font-family:monospace;cursor:pointer}.profile-bio{background:#f1f5f9;padding:12px;border-radius:20px;margin:16px 0;font-size:14px}body.dark .profile-bio{background:#2a2a2a}.profile-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.profile-actions button{flex:1;padding:10px;border-radius:24px;border:none;cursor:pointer;font-weight:500;transition:transform 0.1s}.profile-actions button:active{transform:scale(0.97)}.toast{position:fixed;bottom:20px;right:20px;background:#4f46e5;color:#fff;padding:12px 20px;border-radius:40px;z-index:2000;animation:slideIn 0.3s;box-shadow:0 5px 15px rgba(0,0,0,0.2)}@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}.file-message{background:rgba(79,70,229,0.1);padding:6px 10px;border-radius:16px;display:inline-flex;align-items:center;gap:8px}.file-message a{color:#4f46e5;text-decoration:none}.image-preview{max-width:180px;max-height:180px;border-radius:12px;cursor:pointer;margin-top:4px}.audio-player{max-width:200px;margin-top:4px}.dm-send-btn{background:#4f46e5;border:none;border-radius:20px;padding:10px 20px;color:#fff;cursor:pointer}.report-reason{width:100%;padding:8px;border-radius:20px;border:1px solid #ddd}@media(max-width:680px){.sidebar{width:240px}.message-content{max-width:75%}}
 </style>
 </head>
 <body>
 <div class="sidebar">
     <div class="user-card" id="profileBtn">
-        <div class="user-avatar">{% if avatar_base64 %}<img src="{{ avatar_base64 }}">{% else %}{{ avatar }}{% endif %}</div>
+        <div class="user-avatar">{% if avatar_base64 %}<img src="{{ avatar_base64 }}">{% else %}👤{% endif %}</div>
         <div class="user-name">{{ username }}{% if role == "owner" %}<span class="badge-owner"> ВЛ</span>{% elif role == "admin" %}<span class="badge-admin"> АДМ</span>{% endif %}</div>
         <div class="user-bio">{{ bio[:40] }}</div>
         <div class="user-id">ID: {{ user_id }}</div>
@@ -155,34 +167,38 @@ CHAT_HTML = '''<!DOCTYPE html>
 </div>
 <div class="chat-area">
     <div class="chat-header">
-        <span id="roomName">Главная</span>
+        <button class="room-name-btn" id="roomNameBtn"><span id="roomName">Главная</span></button>
         <button class="notify-btn" id="notifyBtn"><span class="notify-badge" id="notifyBadge">0</span>🔔</button>
     </div>
     <div id="messagesList" class="messages"></div>
     <div id="typingStatus" class="typing"></div>
     <div class="input-area">
+        <button id="voiceBtn">🎙️</button>
         <button id="emojiBtn">😊</button>
         <button id="fileBtn">📎</button>
-        <button id="voiceBtn">🎙️</button>
         <input type="text" id="messageInput" placeholder="Сообщение...">
         <button id="sendBtn">📤</button>
         <input type="file" id="fileInput" style="display:none" accept="image/*,application/pdf,text/plain">
         <input type="file" id="avatarFileInput" style="display:none" accept="image/jpeg,image/png">
     </div>
+    <div id="voicePreview" style="display:none; padding:8px 20px; background:#e0e7ff; border-radius:40px; margin:0 20px 10px 20px; align-items:center; gap:12px">🔊 <span id="voiceDuration">0 сек</span> <button id="cancelVoiceBtn" style="background:#ef4444;border:none;border-radius:20px;padding:4px 12px;color:#fff">Отмена</button> <button id="sendVoiceBtn" style="background:#10b981;border:none;border-radius:20px;padding:4px 12px;color:#fff">Отправить</button></div>
 </div>
 
 <div id="emojiPicker" class="emoji-picker"></div>
-<div id="profileModal" class="modal"><div class="modal-content"><span class="close" id="closeProfile">&times;</span><h3>👤 Мой профиль</h3><label>Аватар (эмодзи):</label><input type="text" id="avatarInput" maxlength="2" placeholder="😀"><label>Загрузить изображение:</label><button id="uploadAvatarBtn" style="background:#4f46e5;color:#fff">📷 Выбрать фото</button><label>О себе:</label><textarea id="bioInput" rows="3">{{ bio }}</textarea><label>Новое имя:</label><input type="text" id="newName"><label>Новый пароль:</label><input type="password" id="newPass"><div id="idChangeInfo"></div><button id="changeIdBtn">🆔 Сменить ID</button><button id="saveProfile">💾 Сохранить</button></div></div>
+<div id="profileModal" class="modal"><div class="modal-content"><span class="close" id="closeProfile">&times;</span><h3>👤 Мой профиль</h3><label>Загрузить аватар:</label><button id="uploadAvatarBtn" style="background:#4f46e5;color:#fff">📷 Выбрать фото</button><label>О себе:</label><textarea id="bioInput" rows="3">{{ bio }}</textarea><label>Новое имя:</label><input type="text" id="newName"><label>Новый пароль:</label><input type="password" id="newPass"><div id="idChangeInfo"></div><button id="changeIdBtn">🆔 Сменить ID</button><button id="saveProfile">💾 Сохранить</button></div></div>
 <div id="settingsModal" class="modal"><div class="modal-content"><span class="close" id="closeSettings">&times;</span><h3>⚙️ Настройки</h3><button id="themeBtn">🌙 Тёмная тема</button></div></div>
 <div id="notifyModal" class="modal"><div class="modal-content"><span class="close" id="closeNotifyModal">&times;</span><h3>🔔 Уведомления</h3><div id="notificationsList"></div></div></div>
 <div id="userModal" class="modal"><div class="modal-content"><span class="close" id="closeUserModal">&times;</span><div id="userModalContent"></div></div></div>
-<div id="dmModal" class="modal"><div class="modal-content"><span class="close" id="closeDmModal">&times;</span><h3>💬 Чат с <span id="dmTargetName"></span></h3><div id="dmMessages" style="height:300px;overflow-y:auto;background:#f1f5f9;padding:12px;border-radius:20px;margin:12px 0"></div><div style="display:flex;gap:8px"><input type="text" id="dmInput" placeholder="Сообщение..." style="flex:1;padding:12px;border-radius:20px;border:1px solid #ddd"><button id="dmSendBtn" style="background:#4f46e5;color:#fff;border:none;border-radius:20px;padding:10px 20px">📤</button></div></div></div>
+<div id="dmModal" class="modal"><div class="modal-content"><span class="close" id="closeDmModal">&times;</span><h3>💬 Чат с <span id="dmTargetName"></span></h3><div id="dmMessages" style="height:300px;overflow-y:auto;background:#f1f5f9;padding:12px;border-radius:20px;margin:12px 0"></div><div style="display:flex;gap:8px"><input type="text" id="dmInput" placeholder="Сообщение..." style="flex:1;padding:12px;border-radius:20px;border:1px solid #ddd"><button id="dmSendBtn" class="dm-send-btn">📤</button></div></div></div>
+<div id="reportModal" class="modal"><div class="modal-content"><span class="close" id="closeReportModal">&times;</span><h3>⚠️ Пожаловаться на пользователя</h3><p id="reportUserName"></p><textarea id="reportReason" rows="3" placeholder="Причина жалобы..." class="report-reason"></textarea><button id="submitReportBtn">Отправить жалобу</button></div></div>
 
 <script>
 let socket=io(),currentRoom='Главная',username='{{ username }}',role='{{ role }}',user_id='{{ user_id }}',typingUsers={};
-let notifications=[],pendingFriendRequests=[],currentDMTarget=null;
-let mediaRecorder=null,audioChunks=[],isRecording=false;
+let notifications=[],pendingFriendRequests=[],outgoingFriendRequests=[],currentDMTarget=null;
+let mediaRecorder=null,audioChunks=[],isRecording=false,recordedBlob=null;
 const msgDiv=document.getElementById('messagesList'),msgInput=document.getElementById('messageInput');
+const voicePreviewDiv=document.getElementById('voicePreview'),voiceDurationSpan=document.getElementById('voiceDuration');
+let currentReportUser=null;
 
 function showToast(msg,type='success'){
     let t=document.createElement('div');t.className='toast';t.style.background=type==='success'?'#10b981':(type==='error'?'#ef4444':'#4f46e5');t.innerHTML=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3000);
@@ -193,10 +209,35 @@ document.getElementById('themeBtn').onclick=()=>{
     document.body.classList.toggle('dark');
     localStorage.setItem('chatTheme',document.body.classList.contains('dark')?'dark':'light');
 };
+document.getElementById('roomNameBtn').onclick=()=>{
+    if(currentRoom!=='Главная'){
+        socket.emit('switch',{old:currentRoom,new:'Главная'});
+        currentRoom='Главная';
+        document.getElementById('roomName').innerText='Главная';
+        document.querySelectorAll('.room-item').forEach(i=>i.classList.remove('active'));
+        let mainRoom=Array.from(document.querySelectorAll('.room-item')).find(el=>el.dataset.room==='Главная');
+        if(mainRoom)mainRoom.classList.add('active');
+        msgDiv.innerHTML='<div class="system-msg">⏳ Загрузка...</div>';
+    }
+};
 function addNotification(title,text){notifications.unshift({title,text,time:new Date().toLocaleTimeString()});if(notifications.length>20)notifications.pop();updateBadge();updateNotifList();}
-function updateBadge(){let b=document.getElementById('notifyBadge');let c=notifications.length+pendingFriendRequests.length;if(c>0){b.textContent=c>99?'99+':c;b.style.display='flex';}else b.style.display='none';}
-function updateNotifList(){let c=document.getElementById('notificationsList');if(notifications.length===0&&pendingFriendRequests.length===0){c.innerHTML='<p style="color:#6b7280;text-align:center;padding:16px">Нет уведомлений</p>';return;}let h='';pendingFriendRequests.forEach(r=>{h+=`<div class="friend-request-item"><span>📨 Заявка от ${escape(r)}</span><button onclick="acceptReq('${escape(r)}')" style="background:#10b981;border:none;border-radius:20px;padding:6px 14px;color:#fff;cursor:pointer">Принять</button></div>`;});notifications.forEach(n=>{h+=`<div class="friend-request-item"><div><strong>${escape(n.title)}</strong><br><small>${escape(n.text)}</small><br><span style="font-size:10px">${n.time}</span></div></div>`;});c.innerHTML=h;}
-function loadRequests(){fetch('/get_requests').then(r=>r.json()).then(data=>{pendingFriendRequests=data.requests||[];updateBadge();updateNotifList();});}
+function updateBadge(){let b=document.getElementById('notifyBadge');let c=notifications.length+pendingFriendRequests.length+outgoingFriendRequests.length;if(c>0){b.textContent=c>99?'99+':c;b.style.display='flex';}else b.style.display='none';}
+function updateNotifList(){
+    let c=document.getElementById('notificationsList');
+    if(notifications.length===0&&pendingFriendRequests.length===0&&outgoingFriendRequests.length===0){c.innerHTML='<p style="color:#6b7280;text-align:center;padding:16px">Нет уведомлений</p>';return;}
+    let h='';
+    pendingFriendRequests.forEach(r=>{h+=`<div class="friend-request-item"><span>📨 Заявка от ${escape(r)}</span><button onclick="acceptReq('${escape(r)}')" style="background:#10b981;border:none;border-radius:20px;padding:6px 14px;color:#fff;cursor:pointer">Принять</button></div>`;});
+    outgoingFriendRequests.forEach(r=>{h+=`<div class="friend-request-item"><span>📤 Заявка для ${escape(r)}</span><button onclick="cancelReq('${escape(r)}')" style="background:#ef4444;border:none;border-radius:20px;padding:6px 14px;color:#fff;cursor:pointer">Отменить</button></div>`;});
+    notifications.forEach(n=>{h+=`<div class="friend-request-item"><div><strong>${escape(n.title)}</strong><br><small>${escape(n.text)}</small><br><span style="font-size:10px">${n.time}</span></div></div>`;});
+    c.innerHTML=h;
+}
+function loadRequests(){
+    fetch('/get_requests').then(r=>r.json()).then(data=>{
+        pendingFriendRequests=data.incoming||[];
+        outgoingFriendRequests=data.outgoing||[];
+        updateBadge();updateNotifList();
+    });
+}
 document.getElementById('notifyBtn').onclick=()=>{document.getElementById('notifyModal').style.display='flex';updateNotifList();};
 document.getElementById('closeNotifyModal').onclick=()=>document.getElementById('notifyModal').style.display='none';
 fetch('/id_change_info').then(r=>r.json()).then(data=>{let d=document.getElementById('idChangeInfo');if(data.can_change)d.innerHTML='<p style="color:#10b981;margin:8px 0">✅ Можно сменить ID</p>';else d.innerHTML=`<p style="color:#f59e0b;margin:8px 0">⚠️ Следующая смена ID ${data.next_change_date}</p>`;});
@@ -215,10 +256,7 @@ document.getElementById('avatarFileInput').onchange=function(e){
     let file=e.target.files[0];
     if(file&&file.type.startsWith('image/')){
         let reader=new FileReader();
-        reader.onload=function(ev){
-            tempAvatarBase64=ev.target.result;
-            showToast('✅ Изображение выбрано, сохраните профиль','success');
-        };
+        reader.onload=function(ev){tempAvatarBase64=ev.target.result;showToast('✅ Изображение выбрано, сохраните профиль','success');};
         reader.readAsDataURL(file);
     }else{showToast('❌ Выберите изображение','error');}
     e.target.value='';
@@ -236,13 +274,14 @@ document.getElementById('fileInput').onchange=function(e){
     reader.readAsDataURL(file);
     e.target.value='';
 };
+// Голосовое сообщение – предпросмотр
 const voiceBtn=document.getElementById('voiceBtn');
 voiceBtn.onclick=async()=>{
     if(isRecording){
         mediaRecorder.stop();
         isRecording=false;
         voiceBtn.style.background='#4f46e5';
-        showToast('⏹️ Запись остановлена','info');
+        showToast('⏹️ Запись остановлена. Можете отправить или отменить.','info');
     }else{
         try{
             const stream=await navigator.mediaDevices.getUserMedia({audio:true});
@@ -250,22 +289,40 @@ voiceBtn.onclick=async()=>{
             audioChunks=[];
             mediaRecorder.ondataavailable=e=>audioChunks.push(e.data);
             mediaRecorder.onstop=()=>{
-                const audioBlob=new Blob(audioChunks,{type:'audio/webm'});
-                const reader=new FileReader();
-                reader.onload=()=>{
-                    socket.emit('voice_message',{data:reader.result,room:currentRoom});
+                const blob=new Blob(audioChunks,{type:'audio/webm'});
+                recordedBlob=blob;
+                const url=URL.createObjectURL(blob);
+                const audio=new Audio(url);
+                audio.onloadedmetadata=()=>{
+                    let duration=Math.round(audio.duration);
+                    voiceDurationSpan.innerText=duration+' сек';
+                    voicePreviewDiv.style.display='flex';
                 };
-                reader.readAsDataURL(audioBlob);
                 stream.getTracks().forEach(track=>track.stop());
             };
             mediaRecorder.start();
             isRecording=true;
             voiceBtn.style.background='#ef4444';
-            showToast('🔴 Запись началась...','info');
-        }catch(err){
-            showToast('❌ Нет доступа к микрофону','error');
-        }
+            showToast('🔴 Запись началась... Нажмите ещё раз для остановки.','info');
+        }catch(err){showToast('❌ Нет доступа к микрофону','error');}
     }
+};
+document.getElementById('cancelVoiceBtn').onclick=()=>{
+    recordedBlob=null;
+    voicePreviewDiv.style.display='none';
+    showToast('Запись отменена','info');
+};
+document.getElementById('sendVoiceBtn').onclick=()=>{
+    if(recordedBlob){
+        const reader=new FileReader();
+        reader.onload=()=>{
+            socket.emit('voice_message',{data:reader.result,room:currentRoom});
+            showToast('🎤 Голосовое сообщение отправлено','success');
+            recordedBlob=null;
+            voicePreviewDiv.style.display='none';
+        };
+        reader.readAsDataURL(recordedBlob);
+    }else{showToast('Нет записи','error');}
 };
 function loadDMList(){fetch('/get_dm_list').then(r=>r.json()).then(data=>{let c=document.getElementById('dmList');if(data.dms&&data.dms.length){c.innerHTML=data.dms.map(d=>`<div class="user-item" onclick="openDM('${escape(d.with)}')"><span>💬 ${escape(d.with)}</span><span style="font-size:10px;color:#94a3b8">${escape(d.last_preview)}</span></div>`).join('');}else c.innerHTML='<div class="user-item" style="color:#94a3b8">Нет диалогов</div>';});}
 function openDM(t){currentDMTarget=t;document.getElementById('dmTargetName').innerText=t;fetch('/get_dm/'+encodeURIComponent(t)).then(r=>r.json()).then(data=>{let c=document.getElementById('dmMessages');c.innerHTML=data.messages.map(m=>`<div style="margin:8px 0;text-align:${m.from===username?'right':'left'}"><div style="display:inline-block;background:${m.from===username?'#4f46e5':'#e2e8f0'};color:${m.from===username?'#fff':'#1f2937'};padding:8px 12px;border-radius:20px;max-width:80%"><strong>${escape(m.from)}</strong> (${m.time})<br>${escape(m.text)}</div></div>`).join('');c.scrollTop=c.scrollHeight;});document.getElementById('dmModal').style.display='flex';}
@@ -282,7 +339,8 @@ function showUserProfile(name){
         let actions='';
         if(!data.is_friend&&name!==username)actions+=`<button onclick="addFriend('${name}')" style="background:#10b981;color:#fff">➕ В друзья</button>`;
         if(data.is_friend)actions+=`<button onclick="removeFriend('${name}')" style="background:#ef4444;color:#fff">❌ Удалить</button>`;
-        if(role==='owner'){
+        actions+=`<button onclick="openDM('${name}')" style="background:#8b5cf6;color:#fff">💬 Личка</button>`;
+        if(role==='owner'||role==='admin'){
             if(data.user_role==='admin')actions+=`<button onclick="unadminUser('${name}')" style="background:#f59e0b;color:#fff">🔻 Снять админку</button>`;
             else if(data.user_role!=='owner')actions+=`<button onclick="giveAdmin('${name}')" style="background:#10b981;color:#fff">⭐ Выдать админку</button>`;
         }
@@ -292,9 +350,10 @@ function showUserProfile(name){
             if(data.banned)actions+=`<button onclick="unbanUser('${name}')" style="background:#10b981;color:#fff">🔓 Разбанить</button>`;
             else actions+=`<button onclick="banUser('${name}')" style="background:#ef4444;color:#fff">🔨 Забанить</button>`;
         }
+        actions+=`<button onclick="reportUser('${name}')" style="background:#f97316;color:#fff">⚠️ Пожаловаться</button>`;
         let avatarHtml='';
         if(data.avatar_base64)avatarHtml=`<img src="${data.avatar_base64}">`;
-        else avatarHtml=data.avatar||'👤';
+        else avatarHtml='👤';
         document.getElementById('userModalContent').innerHTML=`
             <div class="profile-avatar">${avatarHtml}</div>
             <div class="profile-name">${escape(data.username)}</div>
@@ -306,16 +365,28 @@ function showUserProfile(name){
         document.getElementById('userModal').style.display='flex';
     });
 }
+window.reportUser=name=>{currentReportUser=name;document.getElementById('reportUserName').innerText=name;document.getElementById('reportReason').value='';document.getElementById('reportModal').style.display='flex';};
+document.getElementById('submitReportBtn').onclick=()=>{
+    let reason=document.getElementById('reportReason').value.trim();
+    if(!reason){showToast('Укажите причину','error');return;}
+    fetch('/report_user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:currentReportUser,reason:reason})}).then(r=>r.json()).then(data=>{
+        showToast(data.message,data.success?'success':'error');
+        document.getElementById('reportModal').style.display='none';
+        if(data.success)addNotification('Жалоба отправлена',`На пользователя ${currentReportUser}`);
+    });
+};
+document.getElementById('closeReportModal').onclick=()=>document.getElementById('reportModal').style.display='none';
 window.copyId=id=>{navigator.clipboard.writeText(id);showToast('✅ ID скопирован','success');};
 window.muteUser=name=>{let t=document.getElementById('muteTime').value;fetch('/mute_user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name,minutes:t})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'warning');document.getElementById('userModal').style.display='none';});};
 window.unmuteUser=name=>{fetch('/unmute_user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'success');document.getElementById('userModal').style.display='none';});};
 window.banUser=name=>{fetch('/ban_user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'error');document.getElementById('userModal').style.display='none';});};
 window.unbanUser=name=>{fetch('/unban_user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'success');document.getElementById('userModal').style.display='none';});};
-window.addFriend=name=>{fetch('/add_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'success');addNotification('Заявка',name);document.getElementById('userModal').style.display='none';});};
+window.addFriend=name=>{fetch('/add_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'success');addNotification('Заявка отправлена',name);document.getElementById('userModal').style.display='none';loadRequests();});};
 window.removeFriend=name=>{fetch('/remove_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'info');addNotification('Друг удалён',name);document.getElementById('userModal').style.display='none';});};
 window.giveAdmin=name=>{fetch('/give_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'success');addNotification('Админ',`${name} назначен`);document.getElementById('userModal').style.display='none';});};
 window.unadminUser=name=>{fetch('/remove_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'warning');addNotification('Админ',`У ${name} снято`);document.getElementById('userModal').style.display='none';});};
-window.acceptReq=name=>{fetch('/accept_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'success');addNotification('Новый друг',name);pendingFriendRequests=pendingFriendRequests.filter(r=>r!==name);updateBadge();updateNotifList();loadRequests();});};
+window.acceptReq=name=>{fetch('/accept_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'success');addNotification('Новый друг',name);loadRequests();});};
+window.cancelReq=name=>{fetch('/cancel_friend_request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);showToast(data.message,'info');addNotification('Заявка отменена',name);loadRequests();});};
 function deleteRoom(roomName){
     if(confirm(`Удалить комнату "${roomName}"?`)){
         fetch('/delete_room',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:roomName})}).then(r=>r.json()).then(data=>{
@@ -330,6 +401,10 @@ function deleteRoom(roomName){
     }
 }
 function addSystem(t){let d=document.createElement('div');d.className='system-msg';d.textContent=t;msgDiv.appendChild(d);msgDiv.scrollTop=msgDiv.scrollHeight;}
+function formatLocalTime(iso){
+    let d=new Date(iso);
+    return d.toLocaleDateString()+' '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
 function addAudioMessage(id,name,audioData,time,isOwn,avatar,avatarBase64){
     let div=document.createElement('div');div.className=`message ${isOwn?'message-own':''}`;div.dataset.id=id;
     let badge='';if(name==='MrAizex')badge='<span class="badge-owner">ВЛ</span>';else if(name==='dimooon')badge='<span class="badge-admin">АДМ</span>';
@@ -385,16 +460,18 @@ function deleteMessage(msgId){
 function escape(s){return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);}
 socket.emit('join',{room:currentRoom});
 socket.on('history',h=>{msgDiv.innerHTML='';h.forEach(m=>{
-    if(m.voice)addAudioMessage(m.id,m.name,m.voice,m.time,m.name===username,m.avatar,m.avatar_base64);
-    else if(m.file)addMessage(m.id,m.name,'',m.time,m.name===username,m.avatar,m.avatar_base64,true,m.file.data,m.file.name,m.file.isImage);
-    else addMessage(m.id,m.name,m.text,m.time,m.name===username,m.avatar,m.avatar_base64);
+    let localTime=formatLocalTime(m.id);
+    if(m.voice)addAudioMessage(m.id,m.name,m.voice,localTime,m.name===username,m.avatar,m.avatar_base64);
+    else if(m.file)addMessage(m.id,m.name,'',localTime,m.name===username,m.avatar,m.avatar_base64,true,m.file.data,m.file.name,m.file.isImage);
+    else addMessage(m.id,m.name,m.text,localTime,m.name===username,m.avatar,m.avatar_base64);
 });});
 socket.on('message',m=>{
-    if(m.voice)addAudioMessage(m.id,m.name,m.voice,m.time,m.name===username,m.avatar,m.avatar_base64);
-    else if(m.file)addMessage(m.id,m.name,'',m.time,m.name===username,m.avatar,m.avatar_base64,true,m.file.data,m.file.name,m.file.isImage);
-    else addMessage(m.id,m.name,m.text,m.time,m.name===username,m.avatar,m.avatar_base64);
+    let localTime=formatLocalTime(m.id);
+    if(m.voice)addAudioMessage(m.id,m.name,m.voice,localTime,m.name===username,m.avatar,m.avatar_base64);
+    else if(m.file)addMessage(m.id,m.name,'',localTime,m.name===username,m.avatar,m.avatar_base64,true,m.file.data,m.file.name,m.file.isImage);
+    else addMessage(m.id,m.name,m.text,localTime,m.name===username,m.avatar,m.avatar_base64);
 });
-socket.on('voice_message',m=>addAudioMessage(m.id,m.name,m.data,m.time,m.name===username,m.avatar,m.avatar_base64));
+socket.on('voice_message',m=>{let localTime=formatLocalTime(m.id);addAudioMessage(m.id,m.name,m.data,localTime,m.name===username,m.avatar,m.avatar_base64);});
 socket.on('delete_message',data=>{
     document.querySelectorAll(`.message[data-id="${data.messageId}"]`).forEach(el=>el.remove());
     showToast('🗑️ Сообщение удалено','info');
@@ -402,7 +479,7 @@ socket.on('delete_message',data=>{
 socket.on('system',d=>addSystem(d.text));
 socket.on('friend_request',data=>{addNotification('Заявка',`${data.from} хочет добавить вас`);loadRequests();});
 socket.on('rooms',l=>{let c=document.getElementById('roomsList');c.innerHTML=l.map(r=>`<div class="room-item ${r===currentRoom?'active':''}" data-room="${r}">🏠 ${escape(r)}${role==='owner'||role==='admin'?`<button class="delete-room" onclick="event.stopPropagation();deleteRoom('${escape(r)}')">🗑</button>`:''}</div>`).join('');document.querySelectorAll('.room-item').forEach(el=>{el.onclick=()=>{let nr=el.dataset.room;if(nr===currentRoom)return;socket.emit('switch',{old:currentRoom,new:nr});currentRoom=nr;document.getElementById('roomName').innerText=currentRoom;document.querySelectorAll('.room-item').forEach(i=>i.classList.remove('active'));el.classList.add('active');msgDiv.innerHTML='<div class="system-msg">⏳ Загрузка...</div>';};});});
-socket.on('users',l=>{let c=document.getElementById('usersList');c.innerHTML=l.map(u=>`<div class="user-item" onclick="showUserProfile('${escape(u.name)}')"><span class="online-dot"></span> ${u.avatar_base64?`<img src="${u.avatar_base64}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">`:u.avatar||'👤'} ${escape(u.name)} ${u.role==='owner'?'<span class="badge-owner">ВЛ</span>':(u.role==='admin'?'<span class="badge-admin">АДМ</span>':'')}</div>`).join('');loadDMList();});
+socket.on('users',l=>{let c=document.getElementById('usersList');c.innerHTML=l.map(u=>`<div class="user-item" onclick="showUserProfile('${escape(u.name)}')"><span class="online-dot"></span> ${u.avatar_base64?`<img src="${u.avatar_base64}" style="width:24px;height:24px;border-radius:50%;">`:u.avatar||'👤'} ${escape(u.name)} ${u.role==='owner'?'<span class="badge-owner">ВЛ</span>':(u.role==='admin'?'<span class="badge-admin">АДМ</span>':'')}<button onclick="event.stopPropagation();openDM('${escape(u.name)}')" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:16px">💬</button></div>`).join('');loadDMList();});
 socket.on('friends',l=>{let c=document.getElementById('friendsList');if(c)c.innerHTML=l.map(f=>`<div class="user-item" onclick="showUserProfile('${escape(f.name)}')">👫 ${escape(f.name)}</div>`).join('');});
 socket.on('typing',d=>{if(d.typing)typingUsers[d.name]=true;else delete typingUsers[d.name];let n=Object.keys(typingUsers).filter(n=>n!==username);document.getElementById('typingStatus').innerText=n.length?(n.length===1?`${n[0]} печатает...`:`${n.length} человек печатают...`):'';});
 document.getElementById('sendBtn').onclick=()=>{let t=msgInput.value.trim();if(t){socket.emit('message',{text:t,room:currentRoom});msgInput.value='';}};
@@ -415,7 +492,6 @@ document.getElementById('closeSettings').onclick=()=>document.getElementById('se
 document.getElementById('closeUserModal').onclick=()=>document.getElementById('userModal').style.display='none';
 document.getElementById('saveProfile').onclick=()=>{
     fetch('/update_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-        avatar:document.getElementById('avatarInput').value,
         avatar_base64:tempAvatarBase64,
         bio:document.getElementById('bioInput').value,
         new_name:document.getElementById('newName').value,
@@ -432,6 +508,7 @@ window.onclick=e=>{
     if(e.target===document.getElementById('notifyModal'))document.getElementById('notifyModal').style.display='none';
     if(e.target===document.getElementById('userModal'))document.getElementById('userModal').style.display='none';
     if(e.target===document.getElementById('dmModal'))document.getElementById('dmModal').style.display='none';
+    if(e.target===document.getElementById('reportModal'))document.getElementById('reportModal').style.display='none';
 };
 loadRequests();socket.emit('get_rooms');socket.emit('get_users');
 </script>
@@ -444,7 +521,7 @@ def index():
     if 'username' not in session: return redirect(url_for('login'))
     u = users.get(session['username'])
     if not u or u.get('banned'): session.clear(); return redirect(url_for('login'))
-    return render_template_string(CHAT_HTML, username=session['username'], role=u['role'], avatar=u.get('avatar','👤'), avatar_base64=u.get('avatar_base64'), bio=u.get('bio',''), user_id=u.get('user_id',''))
+    return render_template_string(CHAT_HTML, username=session['username'], role=u['role'], avatar_base64=u.get('avatar_base64'), bio=u.get('bio',''), user_id=u.get('user_id',''))
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -463,7 +540,7 @@ def register():
         if name in users: return render_template_string(REGISTER_HTML, error='Имя занято')
         if len(name)<3 or len(name)>20: return render_template_string(REGISTER_HTML, error='Имя 3-20')
         if len(pwd)<4: return render_template_string(REGISTER_HTML, error='Пароль мин 4')
-        users[name] = {'password': hashlib.sha256(pwd.encode()).hexdigest(), 'role': 'user', 'avatar': '👤', 'avatar_base64': None, 'bio': '', 'friends': [], 'requests': [], 'banned': False, 'theme': 'light', 'user_id': generate_short_id(), 'id_change_count': 0, 'last_id_change': None, 'muted_until': None}
+        users[name] = {'password': hashlib.sha256(pwd.encode()).hexdigest(), 'role': 'user', 'avatar_base64': None, 'bio': '', 'friends': [], 'requests': [], 'friend_requests': [], 'banned': False, 'theme': 'light', 'user_id': generate_short_id(), 'id_change_count': 0, 'last_id_change': None, 'muted_until': None}
         save_users(users); return redirect(url_for('login'))
     return render_template_string(REGISTER_HTML)
 
@@ -479,7 +556,6 @@ def save_theme():
 def update_profile():
     if 'username' not in session: return jsonify({'error': 'Not logged'}), 401
     name = session['username']; data = request.json
-    if data.get('avatar'): users[name]['avatar'] = data['avatar'][:2]
     if data.get('avatar_base64'): users[name]['avatar_base64'] = data['avatar_base64']
     if data.get('bio') is not None: users[name]['bio'] = data['bio'][:200]
     if data.get('new_name'):
@@ -588,16 +664,34 @@ def add_friend():
     if target==name: return jsonify({'message': 'Себя нельзя'})
     if target in users[name]['friends']: return jsonify({'message': 'Уже друг'})
     if target in users[name]['requests']: return jsonify({'message': 'Заявка уже отправлена'})
-    users[target]['requests'].append(name); save_users(users); socketio.emit('friend_request',{'from':name}, to=target)
+    if name in users[target]['friend_requests']: return jsonify({'message': 'Заявка уже существует'})
+    users[name]['requests'].append(target)
+    users[target]['friend_requests'].append(name)
+    save_users(users)
+    socketio.emit('friend_request', {'from': name}, to=target)
     return jsonify({'message': f'Заявка отправлена {target}'})
 
 @app.route('/accept_friend', methods=['POST'])
 def accept_friend():
     if 'username' not in session: return jsonify({'message': 'Войдите'})
     name = session['username']; target = request.json.get('friend')
-    if target not in users[name]['requests']: return jsonify({'message': 'Нет заявки'})
-    users[name]['requests'].remove(target); users[name]['friends'].append(target); users[target]['friends'].append(name); save_users(users)
+    if target not in users[name]['friend_requests']: return jsonify({'message': 'Нет заявки'})
+    users[name]['friend_requests'].remove(target)
+    users[name]['friends'].append(target)
+    users[target]['friends'].append(name)
+    if name in users[target]['requests']: users[target]['requests'].remove(name)
+    save_users(users)
     return jsonify({'message': f'Вы приняли заявку от {target}'})
+
+@app.route('/cancel_friend_request', methods=['POST'])
+def cancel_friend_request():
+    if 'username' not in session: return jsonify({'message': 'Войдите'})
+    name = session['username']; target = request.json.get('friend')
+    if target not in users[name]['requests']: return jsonify({'message': 'Нет исходящей заявки'})
+    users[name]['requests'].remove(target)
+    users[target]['friend_requests'].remove(name)
+    save_users(users)
+    return jsonify({'message': f'Заявка для {target} отменена'})
 
 @app.route('/remove_friend', methods=['POST'])
 def remove_friend():
@@ -609,8 +703,25 @@ def remove_friend():
 
 @app.route('/get_requests')
 def get_requests():
-    if 'username' not in session: return jsonify({'requests': []})
-    return jsonify({'requests': users[session['username']].get('requests', [])})
+    if 'username' not in session: return jsonify({'incoming': [], 'outgoing': []})
+    name = session['username']
+    return jsonify({'incoming': users[name].get('friend_requests', []), 'outgoing': users[name].get('requests', [])})
+
+@app.route('/report_user', methods=['POST'])
+def report_user():
+    if 'username' not in session: return jsonify({'success': False, 'message': 'Не авторизован'})
+    reporter = session['username']
+    target = request.json.get('target')
+    reason = request.json.get('reason')
+    if target not in users: return jsonify({'success': False, 'message': 'Пользователь не найден'})
+    report_id = str(int(datetime.now().timestamp()*1000))
+    reports[report_id] = {'reporter': reporter, 'target': target, 'reason': reason, 'time': datetime.now().isoformat()}
+    save_reports(reports)
+    # Уведомить владельца и админов
+    for uname, udata in users.items():
+        if udata['role'] in ['owner', 'admin']:
+            socketio.emit('system', {'text': f'📢 Жалоба от {reporter} на {target}: {reason[:50]}'}, to=uname)
+    return jsonify({'success': True, 'message': 'Жалоба отправлена администрации'})
 
 @app.route('/user_info/<name>')
 def user_info(name):
@@ -618,7 +729,7 @@ def user_info(name):
     u = users[name]
     is_friend = name in users.get(session.get('username',''),{}).get('friends',[]) if session.get('username') else False
     role_display = {'owner':'Владелец','admin':'Админ','user':'Пользователь'}.get(u['role'],'Пользователь')
-    return jsonify({'username':name,'bio':u.get('bio',''),'role_display':role_display,'user_role':u['role'],'avatar':u.get('avatar','👤'),'avatar_base64':u.get('avatar_base64'),'user_id':u.get('user_id',''),'friends_count':len(u.get('friends',[])),'is_friend':is_friend,'banned':u.get('banned',False),'muted':u.get('muted_until') and datetime.now()<datetime.fromisoformat(u['muted_until'])})
+    return jsonify({'username':name,'bio':u.get('bio',''),'role_display':role_display,'user_role':u['role'],'avatar_base64':u.get('avatar_base64'),'user_id':u.get('user_id',''),'friends_count':len(u.get('friends',[])),'is_friend':is_friend,'banned':u.get('banned',False),'muted':u.get('muted_until') and datetime.now()<datetime.fromisoformat(u['muted_until'])})
 
 @app.route('/get_dm_list')
 def get_dm_list():
