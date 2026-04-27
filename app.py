@@ -129,7 +129,7 @@ CHAT_HTML = '''<!DOCTYPE html>
 </div>
 <div class="chat-area">
     <div class="chat-header">
-        <span><strong>#</strong> <span id="roomName">Главная</span></span>
+        <span id="roomName">Главная</span>
         <button class="notify-btn" id="notifyBtn"><span class="notify-badge" id="notifyBadge">0</span>🔔</button>
     </div>
     <div id="messagesList" class="messages"></div>
@@ -146,7 +146,7 @@ CHAT_HTML = '''<!DOCTYPE html>
 <div id="settingsModal" class="modal"><div class="modal-content"><span class="close" id="closeSettings">&times;</span><h3>⚙️ Настройки</h3><button id="themeBtn">🌙 Тёмная тема</button></div></div>
 <div id="notifyModal" class="modal"><div class="modal-content"><span class="close" id="closeNotifyModal">&times;</span><h3>🔔 Уведомления</h3><div id="notificationsList"></div></div></div>
 <div id="userModal" class="modal"><div class="modal-content"><span class="close" id="closeUserModal">&times;</span><div id="userModalContent"></div></div></div>
-<div id="dmModal" class="modal"><div class="modal-content"><span class="close" id="closeDmModal">&times;</span><h3>💬 Чат с <span id="dmTargetName"></span></h3><div id="dmMessages" style="height:300px;overflow-y:auto;background:#f1f5f9;padding:12px;border-radius:20px;margin:12px 0"></div><div style="display:flex;gap:8px"><input type="text" id="dmInput" placeholder="Сообщение..." style="flex:1;padding:12px;border-radius:20px;border:1px solid #ddd"><button id="dmSendBtn" style="background:#4f46e5;color:#fff;border:none;border-radius:20px;padding:10px 20px">📤</button></div></div></div>
+<div id="dmModal" class="modal"><div class="modal-content"><span class="close" id="closeDmModal">&times;</span><h3>💬 Личный чат с <span id="dmTargetName"></span></h3><div id="dmMessages" style="height:300px;overflow-y:auto;background:#f1f5f9;padding:12px;border-radius:20px;margin:12px 0"></div><div style="display:flex;gap:8px"><input type="text" id="dmInput" placeholder="Сообщение..." style="flex:1;padding:12px;border-radius:20px;border:1px solid #ddd"><button id="dmSendBtn" style="background:#4f46e5;color:#fff;border:none;border-radius:20px;padding:10px 20px">📤</button></div></div></div>
 
 <script>
 let socket=io(),currentRoom='Главная',username='{{ username }}',role='{{ role }}',user_id='{{ user_id }}',typingUsers={};
