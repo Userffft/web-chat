@@ -4,7 +4,7 @@ import hashlib
 import random
 import base64
 from datetime import datetime, timedelta
-from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
+from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify, Response
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # -------------------------- НАСТРОЙКИ --------------------------
@@ -635,88 +635,15 @@ loadRequests();socket.emit('get_rooms');socket.emit('get_users');
 </body>
 </html>'''
 
-# -------------------------- НОВЫЕ МАРШРУТЫ --------------------------
-@app.route('/clear_history', methods=['POST'])
-def clear_history():
-    if 'username' not in session: return jsonify({'success': False})
-    global messages
-    messages = {'Главная': []}
-    save_messages(messages)
-    return jsonify({'success': True})
-
-@app.route('/export_chat')
-def export_chat():
-    if 'username' not in session: return jsonify({'error': 'Not logged'})
-    from flask import Response
-    import json
-    data = json.dumps(messages, ensure_ascii=False, indent=2)
-    return Response(data, mimetype='application/json', headers={'Content-Disposition': 'attachment;filename=chat_history.json'})
-
-@app.route('/change_password', methods=['POST'])
-def change_password():
-    if 'username' not in session: return jsonify({'error': 'Not logged'})
-    new_pass = request.json.get('new_password')
-    if not new_pass or len(new_pass)<4: return jsonify({'error': 'Слишком короткий'})
-    users[session['username']]['password'] = hashlib.sha256(new_pass.encode()).hexdigest()
-    save_users(users)
-    return jsonify({'success': True})
-
-@app.route('/notification_settings', methods=['POST'])
-def notification_settings():
-    if 'username' not in session: return jsonify({'error': 'Not logged'})
-    enabled = request.json.get('enabled')
-    users[session['username']]['notifications'] = enabled
-    save_users(users)
-    return jsonify({'success': True})
-
-@app.route('/get_reports')
-def get_reports():
-    if 'username' not in session or users[session['username']]['role'] not in ['owner','admin']:
-        return jsonify({'reports': []})
-    reports_list = [{'reporter': r['reporter'], 'target': r['target'], 'reason': r['reason'], 'time': r['time']} for r in reports.values()]
-    return jsonify({'reports': reports_list})
-
-@app.route('/give_moder', methods=['POST'])
-def give_moder():
-    if 'username' not in session or users[session['username']]['role'] not in ['owner','admin']:
-        return jsonify({'message': 'Нет прав'})
-    target = request.json.get('username')
-    if target in users and users[target]['role'] not in ['owner','admin']:
-        users[target]['role'] = 'moderator'
-        save_users(users)
-        socketio.emit('system', {'text': f'🛡️ {target} назначен модератором!'}, broadcast=True)
-        return jsonify({'message': f'{target} теперь модератор'})
-    return jsonify({'message': 'Не найден'})
-
-@app.route('/remove_moder', methods=['POST'])
-def remove_moder():
-    if 'username' not in session or users[session['username']]['role'] not in ['owner','admin']:
-        return jsonify({'message': 'Нет прав'})
-    target = request.json.get('username')
-    if target in users and users[target]['role'] == 'moderator':
-        users[target]['role'] = 'user'
-        save_users(users)
-        socketio.emit('system', {'text': f'🔻 У {target} снята роль модератора'}, broadcast=True)
-        return jsonify({'message': f'У {target} снята роль модератора'})
-    return jsonify({'message': 'Не найден или не модератор'})
-
-@app.route('/user_avatar/<name>')
-def user_avatar(name):
-    if name not in users:
-        return jsonify({'avatar_base64': None})
-    return jsonify({'avatar_base64': users[name].get('avatar_base64')})
-
-# -------------------------- ОСТАЛЬНЫЕ МАРШРУТЫ (без изменений) --------------------------
-# (код маршрутов идентичен предыдущей версии, но я добавлю их для полноты)
-
-app.route('/')(lambda: index())
+# -------------------------- МАРШРУТЫ --------------------------
+@app.route('/')
 def index():
     if 'username' not in session: return redirect(url_for('login'))
     u = users.get(session['username'])
     if not u or u.get('banned'): session.clear(); return redirect(url_for('login'))
     return render_template_string(CHAT_HTML, username=session['username'], role=u['role'], avatar_base64=u.get('avatar_base64'), bio=u.get('bio',''), user_id=u.get('user_id',''))
 
-app.route('/login', methods=['GET','POST'])(lambda: login())
+@app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         name = request.form['username']; pwd = request.form['password']; h = hashlib.sha256(pwd.encode()).hexdigest()
@@ -726,13 +653,13 @@ def login():
         return render_template_string(LOGIN_HTML, error='Неверные данные')
     return render_template_string(LOGIN_HTML)
 
-app.route('/register', methods=['GET','POST'])(lambda: register())
+@app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         name = request.form['username']; pwd = request.form['password']
         if name in users: return render_template_string(REGISTER_HTML, error='Имя занято')
-        if len(name)<3 or len(name)>20: return render_template_string(REGISTER_HTML, error='Имя 3-20')
-        if len(pwd)<4: return render_template_string(REGISTER_HTML, error='Пароль мин 4')
+        if len(name) < 3 or len(name) > 20: return render_template_string(REGISTER_HTML, error='Имя 3-20')
+        if len(pwd) < 4: return render_template_string(REGISTER_HTML, error='Пароль мин 4')
         users[name] = {'password': hashlib.sha256(pwd.encode()).hexdigest(), 'role': 'user', 'avatar_base64': None, 'bio': '', 'friends': [], 'requests': [], 'friend_requests': [], 'banned': False, 'theme': 'light', 'user_id': generate_short_id(), 'id_change_count': 0, 'last_id_change': None, 'muted_until': None, 'online': False}
         save_users(users); return redirect(url_for('login'))
     return render_template_string(REGISTER_HTML)
@@ -758,39 +685,41 @@ def update_profile():
     if data.get('bio') is not None: users[name]['bio'] = data['bio'][:200]
     if data.get('new_name'):
         nn = data['new_name']
-        if len(nn)<3 or len(nn)>20: return jsonify({'error': 'Имя 3-20'}), 400
+        if len(nn) < 3 or len(nn) > 20: return jsonify({'error': 'Имя 3-20'}), 400
         if nn in users and nn != name: return jsonify({'error': 'Имя занято'}), 400
         users[nn] = users.pop(name); session['username'] = nn
-    if data.get('new_password') and len(data['new_password'])>=4: users[session['username']]['password'] = hashlib.sha256(data['new_password'].encode()).hexdigest()
+    if data.get('new_password') and len(data['new_password']) >= 4: users[session['username']]['password'] = hashlib.sha256(data['new_password'].encode()).hexdigest()
     save_users(users); return jsonify({'success': True})
 
 @app.route('/change_id', methods=['POST'])
 def change_id():
     if 'username' not in session: return jsonify({'error': 'Not logged'}), 401
     name = session['username']; new_id = request.json.get('new_id')
-    if not new_id or not new_id.isdigit() or len(new_id)<4 or len(new_id)>8: return jsonify({'error': 'ID должен быть числом от 4 до 8 цифр'})
+    if not new_id or not new_id.isdigit() or len(new_id) < 4 or len(new_id) > 8: return jsonify({'error': 'ID должен быть числом от 4 до 8 цифр'})
     u = users[name]
-    if u.get('id_change_count',0)==0:
-        u['user_id']=new_id; u['id_change_count']=1; u['last_id_change']=datetime.now().isoformat(); save_users(users); return jsonify({'success': True})
+    if u.get('id_change_count', 0) == 0:
+        u['user_id'] = new_id; u['id_change_count'] = 1; u['last_id_change'] = datetime.now().isoformat(); save_users(users); return jsonify({'success': True})
     else:
         last_change = datetime.fromisoformat(u['last_id_change']) if u.get('last_id_change') else None
-        if last_change and datetime.now()-last_change<timedelta(days=14):
-            next_change = last_change+timedelta(days=14)
+        if last_change and datetime.now() - last_change < timedelta(days=14):
+            next_change = last_change + timedelta(days=14)
             return jsonify({'error': f'Следующая смена ID с {next_change.strftime("%d.%m.%Y %H:%M")}'})
-        u['user_id']=new_id; u['last_id_change']=datetime.now().isoformat(); save_users(users); return jsonify({'success': True})
+        u['user_id'] = new_id; u['last_id_change'] = datetime.now().isoformat(); save_users(users); return jsonify({'success': True})
 
 @app.route('/id_change_info')
 def id_change_info():
     if 'username' not in session: return jsonify({'can_change': False, 'next_change_date': ''})
     name = session['username']; u = users[name]
-    if u.get('id_change_count',0)==0: return jsonify({'can_change': True, 'next_change_date': ''})
+    if u.get('id_change_count', 0) == 0: return jsonify({'can_change': True, 'next_change_date': ''})
     last_change = datetime.fromisoformat(u['last_id_change']) if u.get('last_id_change') else None
-    if last_change and datetime.now()-last_change<timedelta(days=14): next_change = last_change+timedelta(days=14); return jsonify({'can_change': False, 'next_change_date': next_change.strftime("%d.%m.%Y %H:%M")})
+    if last_change and datetime.now() - last_change < timedelta(days=14):
+        next_change = last_change + timedelta(days=14)
+        return jsonify({'can_change': False, 'next_change_date': next_change.strftime("%d.%m.%Y %H:%M")})
     return jsonify({'can_change': True, 'next_change_date': ''})
 
 @app.route('/delete_room', methods=['POST'])
 def delete_room():
-    if 'username' not in session or users[session['username']]['role'] not in ['owner','admin']:
+    if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']:
         return jsonify({'success': False, 'message': 'Нет прав'})
     room = request.json.get('room')
     if room in rooms and room != 'Главная':
@@ -803,54 +732,78 @@ def delete_room():
 
 @app.route('/give_admin', methods=['POST'])
 def give_admin():
-    if 'username' not in session or users[session['username']]['role']!='owner': return jsonify({'message': 'Только владелец'})
+    if 'username' not in session or users[session['username']]['role'] != 'owner': return jsonify({'message': 'Только владелец'})
     target = request.json.get('username')
-    if target in users and users[target]['role']!='owner' and users[target]['role']!='admin':
-        users[target]['role']='admin'; save_users(users); socketio.emit('system',{'text':f'⭐ {target} назначен администратором!'}, broadcast=True); return jsonify({'message': f'{target} теперь админ'})
+    if target in users and users[target]['role'] != 'owner' and users[target]['role'] != 'admin':
+        users[target]['role'] = 'admin'; save_users(users); socketio.emit('system', {'text': f'⭐ {target} назначен администратором!'}, broadcast=True); return jsonify({'message': f'{target} теперь админ'})
     return jsonify({'message': 'Не найден или уже админ'})
 
 @app.route('/remove_admin', methods=['POST'])
 def remove_admin():
-    if 'username' not in session or users[session['username']]['role']!='owner': return jsonify({'message': 'Только владелец'})
+    if 'username' not in session or users[session['username']]['role'] != 'owner': return jsonify({'message': 'Только владелец'})
     target = request.json.get('username')
-    if target in users and users[target]['role']=='admin':
-        users[target]['role']='user'; save_users(users); socketio.emit('system',{'text':f'🔻 У {target} снята админка'}, broadcast=True); return jsonify({'message': f'У {target} снята админка'})
+    if target in users and users[target]['role'] == 'admin':
+        users[target]['role'] = 'user'; save_users(users); socketio.emit('system', {'text': f'🔻 У {target} снята админка'}, broadcast=True); return jsonify({'message': f'У {target} снята админка'})
     return jsonify({'message': 'Не найден или не админ'})
+
+@app.route('/give_moder', methods=['POST'])
+def give_moder():
+    if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']:
+        return jsonify({'message': 'Нет прав'})
+    target = request.json.get('username')
+    if target in users and users[target]['role'] not in ['owner', 'admin']:
+        users[target]['role'] = 'moderator'
+        save_users(users)
+        socketio.emit('system', {'text': f'🛡️ {target} назначен модератором!'}, broadcast=True)
+        return jsonify({'message': f'{target} теперь модератор'})
+    return jsonify({'message': 'Не найден'})
+
+@app.route('/remove_moder', methods=['POST'])
+def remove_moder():
+    if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']:
+        return jsonify({'message': 'Нет прав'})
+    target = request.json.get('username')
+    if target in users and users[target]['role'] == 'moderator':
+        users[target]['role'] = 'user'
+        save_users(users)
+        socketio.emit('system', {'text': f'🔻 У {target} снята роль модератора'}, broadcast=True)
+        return jsonify({'message': f'У {target} снята роль модератора'})
+    return jsonify({'message': 'Не найден или не модератор'})
 
 @app.route('/mute_user', methods=['POST'])
 def mute_user():
-    if 'username' not in session or users[session['username']]['role'] not in ['owner','admin']: return jsonify({'message': 'Нет прав'})
-    target = request.json.get('username'); minutes = int(request.json.get('minutes',5))
-    if target not in users or users[target]['role']=='owner': return jsonify({'message': 'Нельзя замутить владельца'})
-    users[target]['muted_until'] = (datetime.now()+timedelta(minutes=minutes)).isoformat(); save_users(users)
-    socketio.emit('system',{'text':f'🔇 {target} замучен на {minutes} минут'}, broadcast=True)
+    if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']: return jsonify({'message': 'Нет прав'})
+    target = request.json.get('username'); minutes = int(request.json.get('minutes', 5))
+    if target not in users or users[target]['role'] == 'owner': return jsonify({'message': 'Нельзя замутить владельца'})
+    users[target]['muted_until'] = (datetime.now() + timedelta(minutes=minutes)).isoformat(); save_users(users)
+    socketio.emit('system', {'text': f'🔇 {target} замучен на {minutes} минут'}, broadcast=True)
     return jsonify({'message': f'{target} замучен на {minutes} минут'})
 
 @app.route('/unmute_user', methods=['POST'])
 def unmute_user():
-    if 'username' not in session or users[session['username']]['role'] not in ['owner','admin']: return jsonify({'message': 'Нет прав'})
+    if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']: return jsonify({'message': 'Нет прав'})
     target = request.json.get('username')
     if target not in users: return jsonify({'message': 'Не найден'})
     users[target]['muted_until'] = None; save_users(users)
-    socketio.emit('system',{'text':f'🔊 {target} размучен!'}, broadcast=True)
+    socketio.emit('system', {'text': f'🔊 {target} размучен!'}, broadcast=True)
     return jsonify({'message': f'{target} размучен'})
 
 @app.route('/ban_user', methods=['POST'])
 def ban_user():
-    if 'username' not in session or users[session['username']]['role'] not in ['owner','admin']: return jsonify({'message': 'Нет прав'})
+    if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']: return jsonify({'message': 'Нет прав'})
     target = request.json.get('username')
-    if target not in users or users[target]['role']=='owner': return jsonify({'message': 'Нельзя забанить владельца'})
+    if target not in users or users[target]['role'] == 'owner': return jsonify({'message': 'Нельзя забанить владельца'})
     users[target]['banned'] = True; save_users(users)
-    socketio.emit('system',{'text':f'🔨 {target} забанен!'}, broadcast=True)
+    socketio.emit('system', {'text': f'🔨 {target} забанен!'}, broadcast=True)
     return jsonify({'message': f'{target} забанен'})
 
 @app.route('/unban_user', methods=['POST'])
 def unban_user():
-    if 'username' not in session or users[session['username']]['role'] not in ['owner','admin']: return jsonify({'message': 'Нет прав'})
+    if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']: return jsonify({'message': 'Нет прав'})
     target = request.json.get('username')
     if target in users:
         users[target]['banned'] = False; save_users(users)
-        socketio.emit('system',{'text':f'🔓 {target} разбанен!'}, broadcast=True)
+        socketio.emit('system', {'text': f'🔓 {target} разбанен!'}, broadcast=True)
         return jsonify({'message': f'{target} разбанен'})
     return jsonify({'message': 'Не найден'})
 
@@ -859,7 +812,7 @@ def add_friend():
     if 'username' not in session: return jsonify({'message': 'Войдите'})
     name = session['username']; target = request.json.get('friend')
     if target not in users: return jsonify({'message': 'Не найден'})
-    if target==name: return jsonify({'message': 'Себя нельзя'})
+    if target == name: return jsonify({'message': 'Себя нельзя'})
     if target in users[name]['friends']: return jsonify({'message': 'Уже друг'})
     if target in users[name]['requests']: return jsonify({'message': 'Заявка уже отправлена'})
     if name in users[target]['friend_requests']: return jsonify({'message': 'Заявка уже существует'})
@@ -912,7 +865,7 @@ def report_user():
     target = request.json.get('target')
     reason = request.json.get('reason')
     if target not in users: return jsonify({'success': False, 'message': 'Пользователь не найден'})
-    report_id = str(int(datetime.now().timestamp()*1000))
+    report_id = str(int(datetime.now().timestamp() * 1000))
     reports[report_id] = {'reporter': reporter, 'target': target, 'reason': reason, 'time': datetime.now().isoformat()}
     save_reports(reports)
     for uname, udata in users.items():
@@ -924,9 +877,14 @@ def report_user():
 def user_info(name):
     if name not in users: return jsonify({'error': 'Not found'}), 404
     u = users[name]
-    is_friend = name in users.get(session.get('username',''),{}).get('friends',[]) if session.get('username') else False
-    role_display = {'owner':'Владелец','admin':'Админ','moderator':'Модератор','user':'Пользователь'}.get(u['role'],'Пользователь')
-    return jsonify({'username':name,'bio':u.get('bio',''),'role_display':role_display,'user_role':u['role'],'avatar_base64':u.get('avatar_base64'),'user_id':u.get('user_id',''),'friends_count':len(u.get('friends',[])),'is_friend':is_friend,'banned':u.get('banned',False),'muted':u.get('muted_until') and datetime.now()<datetime.fromisoformat(u['muted_until'])})
+    is_friend = name in users.get(session.get('username', ''), {}).get('friends', []) if session.get('username') else False
+    role_display = {'owner': 'Владелец', 'admin': 'Админ', 'moderator': 'Модератор', 'user': 'Пользователь'}.get(u['role'], 'Пользователь')
+    return jsonify({'username': name, 'bio': u.get('bio', ''), 'role_display': role_display, 'user_role': u['role'], 'avatar_base64': u.get('avatar_base64'), 'user_id': u.get('user_id', ''), 'friends_count': len(u.get('friends', [])), 'is_friend': is_friend, 'banned': u.get('banned', False), 'muted': u.get('muted_until') and datetime.now() < datetime.fromisoformat(u['muted_until'])})
+
+@app.route('/user_avatar/<name>')
+def user_avatar(name):
+    if name not in users: return jsonify({'avatar_base64': None})
+    return jsonify({'avatar_base64': users[name].get('avatar_base64')})
 
 @app.route('/get_dm_list')
 def get_dm_list():
@@ -935,7 +893,7 @@ def get_dm_list():
     for key, conv in dms.items():
         parts = key.split('_')
         if name in parts:
-            other = parts[0] if parts[1]==name else parts[1]
+            other = parts[0] if parts[1] == name else parts[1]
             last = conv[-1] if conv else None
             result.append({'with': other, 'last_preview': last['text'][:30] if last else ''})
     return jsonify({'dms': result})
@@ -943,14 +901,53 @@ def get_dm_list():
 @app.route('/get_dm/<target>')
 def get_dm(target):
     if 'username' not in session: return jsonify({'messages': []})
-    name = session['username']; key = f"{min(name,target)}_{max(name,target)}"
+    name = session['username']; key = f"{min(name, target)}_{max(name, target)}"
     msgs = dms.get(key, [])
     for m in msgs:
         if 'timestamp' not in m:
             m['timestamp'] = datetime.now().timestamp()
     return jsonify({'messages': msgs})
 
-# -------------------------- SOCKET.IO СОБЫТИЯ (добавить online/offline) --------------------------
+@app.route('/clear_history', methods=['POST'])
+def clear_history():
+    if 'username' not in session: return jsonify({'success': False})
+    global messages
+    messages = {'Главная': []}
+    save_messages(messages)
+    return jsonify({'success': True})
+
+@app.route('/export_chat')
+def export_chat():
+    if 'username' not in session: return jsonify({'error': 'Not logged'})
+    import json
+    data = json.dumps(messages, ensure_ascii=False, indent=2)
+    return Response(data, mimetype='application/json', headers={'Content-Disposition': 'attachment;filename=chat_history.json'})
+
+@app.route('/change_password', methods=['POST'])
+def change_password():
+    if 'username' not in session: return jsonify({'error': 'Not logged'})
+    new_pass = request.json.get('new_password')
+    if not new_pass or len(new_pass) < 4: return jsonify({'error': 'Слишком короткий'})
+    users[session['username']]['password'] = hashlib.sha256(new_pass.encode()).hexdigest()
+    save_users(users)
+    return jsonify({'success': True})
+
+@app.route('/notification_settings', methods=['POST'])
+def notification_settings():
+    if 'username' not in session: return jsonify({'error': 'Not logged'})
+    enabled = request.json.get('enabled')
+    users[session['username']]['notifications'] = enabled
+    save_users(users)
+    return jsonify({'success': True})
+
+@app.route('/get_reports')
+def get_reports():
+    if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']:
+        return jsonify({'reports': []})
+    reports_list = [{'reporter': r['reporter'], 'target': r['target'], 'reason': r['reason'], 'time': r['time']} for r in reports.values()]
+    return jsonify({'reports': reports_list})
+
+# -------------------------- SOCKET.IO СОБЫТИЯ --------------------------
 @socketio.on('connect')
 def on_connect():
     username = session.get('username')
@@ -972,7 +969,7 @@ def private_message(data):
     username = session.get('username')
     if not username: return
     target = data['target']; text = data['text']
-    key = f"{min(username,target)}_{max(username,target)}"
+    key = f"{min(username, target)}_{max(username, target)}"
     msg = {'from': username, 'to': target, 'text': text, 'time': datetime.now().strftime('%H:%M'), 'timestamp': datetime.now().timestamp()}
     if key not in dms: dms[key] = []
     dms[key].append(msg); save_dms(dms)
@@ -981,21 +978,21 @@ def private_message(data):
 @socketio.on('voice_message')
 def voice_message(data):
     username = session.get('username')
-    if not username or users.get(username,{}).get('banned'): return
+    if not username or users.get(username, {}).get('banned'): return
     room = data['room']
     audio_data = data['data']
-    msg_id = str(int(datetime.now().timestamp()*1000))
+    msg_id = str(int(datetime.now().timestamp() * 1000))
     msg = {
         'id': msg_id,
         'name': username,
         'voice': audio_data,
         'time': datetime.now().strftime('%H:%M'),
-        'avatar': users[username].get('avatar','👤'),
+        'avatar': users[username].get('avatar', '👤'),
         'avatar_base64': users[username].get('avatar_base64')
     }
     if room not in messages: messages[room] = []
     messages[room].append(msg)
-    if len(messages[room])>100: messages[room] = messages[room][-100:]
+    if len(messages[room]) > 100: messages[room] = messages[room][-100:]
     save_messages(messages)
     emit('voice_message', msg, to=room, broadcast=True)
 
@@ -1006,7 +1003,7 @@ def delete_message(data):
     room = data['room']; msg_id = data['messageId']
     for i, m in enumerate(messages.get(room, [])):
         if str(m.get('id')) == msg_id:
-            if m['name'] == username or users[username]['role'] in ['owner','admin','moderator']:
+            if m['name'] == username or users[username]['role'] in ['owner', 'admin', 'moderator']:
                 messages[room].pop(i)
                 save_messages(messages)
                 emit('delete_message', {'messageId': msg_id}, to=room, broadcast=True)
@@ -1015,44 +1012,44 @@ def delete_message(data):
 @socketio.on('file_message')
 def file_message(data):
     username = session.get('username')
-    if not username or users.get(username,{}).get('banned'): return
+    if not username or users.get(username, {}).get('banned'): return
     room = data['room']
     file_name = data['name']; file_data = data['data']; file_type = data['type']; is_image = data['isImage']
-    msg_id = str(int(datetime.now().timestamp()*1000))
+    msg_id = str(int(datetime.now().timestamp() * 1000))
     msg = {
         'id': msg_id,
         'name': username,
         'text': '',
         'time': datetime.now().strftime('%H:%M'),
-        'avatar': users[username].get('avatar','👤'),
+        'avatar': users[username].get('avatar', '👤'),
         'avatar_base64': users[username].get('avatar_base64'),
         'file': {'name': file_name, 'data': file_data, 'type': file_type, 'isImage': is_image}
     }
     if room not in messages: messages[room] = []
     messages[room].append(msg)
-    if len(messages[room])>100: messages[room] = messages[room][-100:]
+    if len(messages[room]) > 100: messages[room] = messages[room][-100:]
     save_messages(messages)
     emit('file_message', msg, to=room, broadcast=True)
 
 @socketio.on('join')
 def on_join(data):
     username = session.get('username')
-    if not username or users.get(username,{}).get('banned'): return
+    if not username or users.get(username, {}).get('banned'): return
     room = data['room']; join_room(room); emit('history', messages.get(room, []), to=request.sid)
 
 @socketio.on('message')
 def on_message(data):
     username = session.get('username')
-    if not username or users.get(username,{}).get('banned'): return
+    if not username or users.get(username, {}).get('banned'): return
     u = users.get(username)
-    if u.get('muted_until') and datetime.now()<datetime.fromisoformat(u['muted_until']):
+    if u.get('muted_until') and datetime.now() < datetime.fromisoformat(u['muted_until']):
         emit('system', {'text': '🔇 Вы замучены и не можете писать!'}, to=request.sid); return
     room = data['room']; text = data['text']
-    msg_id = str(int(datetime.now().timestamp()*1000))
-    msg = {'id': msg_id, 'name': username, 'text': text, 'time': datetime.now().strftime('%H:%M'), 'avatar': users[username].get('avatar','👤'), 'avatar_base64': users[username].get('avatar_base64')}
+    msg_id = str(int(datetime.now().timestamp() * 1000))
+    msg = {'id': msg_id, 'name': username, 'text': text, 'time': datetime.now().strftime('%H:%M'), 'avatar': users[username].get('avatar', '👤'), 'avatar_base64': users[username].get('avatar_base64')}
     if room not in messages: messages[room] = []
     messages[room].append(msg)
-    if len(messages[room])>100: messages[room] = messages[room][-100:]
+    if len(messages[room]) > 100: messages[room] = messages[room][-100:]
     save_messages(messages); emit('message', msg, to=room, broadcast=True)
 
 @socketio.on('switch')
@@ -1064,7 +1061,7 @@ def on_switch(data):
 @socketio.on('create')
 def on_create(data):
     username = session.get('username')
-    if not username or users[username]['role'] not in ['owner','admin']: return
+    if not username or users[username]['role'] not in ['owner', 'admin']: return
     new_room = data['room'].strip()
     if new_room and new_room not in rooms:
         rooms.append(new_room); messages[new_room] = []; save_rooms(rooms); save_messages(messages); emit('rooms', rooms, broadcast=True)
@@ -1081,12 +1078,12 @@ def get_rooms(): emit('rooms', rooms)
 @socketio.on('get_users')
 def get_users():
     lst = []
-    for name,u in users.items():
+    for name, u in users.items():
         if not u.get('banned') and u.get('online'):
-            lst.append({'name': name, 'role': u['role'], 'avatar': u.get('avatar','👤'), 'avatar_base64': u.get('avatar_base64')})
+            lst.append({'name': name, 'role': u['role'], 'avatar': u.get('avatar', '👤'), 'avatar_base64': u.get('avatar_base64')})
     emit('users', lst, broadcast=True)
     if session.get('username'):
-        name = session['username']; friends = [{'name': f} for f in users[name].get('friends',[])]; emit('friends', friends, to=request.sid)
+        name = session['username']; friends = [{'name': f} for f in users[name].get('friends', [])]; emit('friends', friends, to=request.sid)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
