@@ -130,10 +130,24 @@ CHAT_HTML = '''<!DOCTYPE html>
 </div>
 <div class="chat-area">
     <div class="chat-header">
-        <span id="roomName">Главная</span>
-        <button class="notify-btn" id="notifyBtn"><span class="notify-badge" id="notifyBadge">0</span>🔔</button>
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <div class="chat-tabs">
+            <button class="tab-btn active" data-tab="chat">Главная</button>
+            <button class="tab-btn" data-tab="dm">Личка</button>
+        </div>
+        <span id="roomName" style="display: none;">Главная</span>
     </div>
+    <button class="notify-btn" id="notifyBtn"><span class="notify-badge" id="notifyBadge">0</span>🔔</button>
+</div>
+  <div class="chat-panel" id="chatPanel">
     <div id="messagesList" class="messages"></div>
+    <div id="dmPanel" class="dm-panel">
+    <div id="dmMessagesList" class="messages"></div>
+</div>
+    <div class="messages" id="dmMessagesList" style="flex:1; overflow-y:auto; padding:20px;">
+        <!-- Здесь будет список диалогов -->
+    </div>
+</div>
     <div id="typingStatus" class="typing"></div>
     <div class="input-area">
         <button id="emojiBtn">😊</button>
@@ -294,6 +308,49 @@ document.getElementById('saveProfile').onclick=()=>{fetch('/update_profile',{met
 document.getElementById('logoutBtn').onclick=()=>window.location.href='/logout';
 window.onclick=e=>{if(e.target===document.getElementById('profileModal'))document.getElementById('profileModal').style.display='none';if(e.target===document.getElementById('settingsModal'))document.getElementById('settingsModal').style.display='none';if(e.target===document.getElementById('notifyModal'))document.getElementById('notifyModal').style.display='none';if(e.target===document.getElementById('userModal'))document.getElementById('userModal').style.display='none';if(e.target===document.getElementById('dmModal'))document.getElementById('dmModal').style.display='none';};
 loadRequests();socket.emit('get_rooms');socket.emit('get_users');
+// Переключение между чатом и личными сообщениями
+const tabBtns = document.querySelectorAll('.tab-btn');
+const chatPanel = document.getElementById('chatPanel');
+const dmPanel = document.getElementById('dmPanel');
+if (tabBtns.length) {
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (tab === 'chat') {
+                chatPanel.style.display = 'flex';
+                dmPanel.style.display = 'none';
+            } else {
+                chatPanel.style.display = 'none';
+                dmPanel.style.display = 'flex';
+                // загружаем список диалогов, если его ещё нет
+                if (typeof loadDMList === 'function') loadDMList();
+                if (typeof renderDMList === 'function') renderDMList();
+            }
+        });
+    });
+}
+// Функция рендеринга списка диалогов (копируем из твоего кода)
+function renderDMList() {
+    const container = document.getElementById('dmMessagesList');
+    if (!container) return;
+    fetch('/get_dm_list')
+        .then(r => r.json())
+        .then(data => {
+            if (data.dms && data.dms.length) {
+                container.innerHTML = data.dms.map(d => `
+                    <div class="user-item" onclick="openDM('${escape(d.with)}')">
+                        <span>💬 ${escape(d.with)}</span>
+                        <span style="font-size:10px;color:#94a3b8">${escape(d.last_preview)}</span>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<div class="system-msg">Нет диалогов</div>';
+            }
+        });
+}
+// Если у тебя уже есть функция loadDMList – переименуй или объедини.
 </script>
 </body>
 </html>'''
