@@ -83,6 +83,8 @@ body.dark .chat-area{background:#0f172a}
 body.dark .chat-header{background:#1e293b;color:#fff}
 .menu-btn{font-size:24px;background:none;border:none;cursor:pointer;padding:8px;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center}
 .menu-btn:active{background:rgba(0,0,0,0.1)}
+.notify-btn{position:relative;font-size:20px;background:none;border:none;cursor:pointer;padding:8px;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.notify-badge{position:absolute;top:-2px;right:-2px;background:#ef4444;color:white;font-size:10px;min-width:18px;height:18px;border-radius:20px;display:none;align-items:center;justify-content:center;padding:0 4px}
 .messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
 .message{display:flex;gap:10px;align-items:flex-start;animation:fadeIn 0.2s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -117,7 +119,7 @@ body.dark .modal-content{background:#1e293b;color:#fff}
 body.dark .modal-content input,body.dark .modal-content textarea{background:#334155;border-color:#475569;color:#fff}
 .modal-content button{background:#4f46e5;color:#fff;border:none;padding:12px;border-radius:24px;width:100%;cursor:pointer;margin-top:8px;font-size:14px;font-weight:500}
 .close{float:right;font-size:26px;cursor:pointer;line-height:20px}
-.user-menu{position:fixed;background:#fff;border-radius:20px;box-shadow:0 10px 25px rgba(0,0,0,0.15);padding:8px;z-index:2000;display:none;min-width:170px}
+.user-menu{position:fixed;background:#fff;border-radius:20px;box-shadow:0 10px 25px rgba(0,0,0,0.15);padding:8px;z-index:2000;display:none;min-width:180px}
 body.dark .user-menu{background:#1e293b}
 .user-menu button{width:100%;padding:12px 16px;border:none;background:none;text-align:left;cursor:pointer;border-radius:14px;font-size:14px}
 .user-menu button:active{background:rgba(0,0,0,0.1)}
@@ -127,6 +129,8 @@ body.dark .user-menu button:hover{background:#334155;color:#fff}
 body.dark .emoji-picker{background:#1e293b}
 .emoji{font-size:28px;cursor:pointer;text-align:center;padding:6px;border-radius:12px}
 .emoji:active{background:#f1f5f9;transform:scale(0.9)}
+.notification-item{display:flex;justify-content:space-between;align-items:center;padding:12px;margin:8px 0;background:#f1f5f9;border-radius:20px}
+body.dark .notification-item{background:#334155}
 @media(min-width:768px){.sidebar{position:relative;left:0 !important;width:260px;display:flex !important}.sidebar-overlay{display:none !important}.menu-btn{display:none}}
 </style>
 </head>
@@ -154,7 +158,9 @@ body.dark .emoji-picker{background:#1e293b}
     <div class="chat-header">
         <button class="menu-btn" id="menuBtn">☰</button>
         <span><strong>#</strong> <span id="roomName">Главная</span></span>
-        <span id="onlineCount" style="font-size:13px;"></span>
+        <div style="display:flex;gap:8px">
+            <button class="notify-btn" id="notifyBtn"><span class="notify-badge" id="notifyBadge">0</span>🔔</button>
+        </div>
     </div>
     <div id="messagesList" class="messages"></div>
     <div id="typingStatus" class="typing"></div>
@@ -167,16 +173,24 @@ body.dark .emoji-picker{background:#1e293b}
 
 <div id="emojiPicker" class="emoji-picker"></div>
 <div id="profileModal" class="modal"><div class="modal-content"><span class="close" id="closeProfile">&times;</span><h3 style="margin-bottom:16px">👤 Профиль</h3><label>Аватар (эмодзи):</label><input type="text" id="avatarInput" maxlength="2" placeholder="😀"><label>О себе:</label><textarea id="bioInput" rows="3">{{ bio }}</textarea><label>Новое имя:</label><input type="text" id="newName" placeholder="Новое имя"><label>Новый пароль:</label><input type="password" id="newPass" placeholder="Новый пароль"><button id="saveProfile">💾 Сохранить</button></div></div>
-<div id="settingsModal" class="modal"><div class="modal-content"><span class="close" id="closeSettings">&times;</span><h3 style="margin-bottom:16px">⚙️ Настройки</h3><button id="themeBtn" style="margin-bottom:16px">🌙 Тёмная тема</button><h4 style="margin-bottom:8px">📨 ЗАЯВКИ В ДРУЗЬЯ</h4><div id="requestsList"></div><h4 style="margin:16px 0 8px">👑 КОМАНДЫ</h4><p style="font-size:12px;margin:4px 0">• <code>/giveadmin ИМЯ</code> — выдать админку</p><p style="font-size:12px">• <code>/unadmin ИМЯ</code> — снять админку</p></div></div>
+<div id="settingsModal" class="modal"><div class="modal-content"><span class="close" id="closeSettings">&times;</span><h3 style="margin-bottom:16px">⚙️ Настройки</h3><button id="themeBtn" style="margin-bottom:16px">🌙 Тёмная тема</button><h4 style="margin-bottom:8px">👑 КОМАНДЫ</h4><p style="font-size:12px;margin:4px 0">• <code>/giveadmin ИМЯ</code> — выдать админку</p><p style="font-size:12px">• <code>/unadmin ИМЯ</code> — снять админку</p></div></div>
+<div id="notifyModal" class="modal"><div class="modal-content"><span class="close" id="closeNotifyModal">&times;</span><h3 style="margin-bottom:16px">🔔 Уведомления</h3><div id="notificationsList"><p style="color:#6b7280;text-align:center;padding:16px">Нет уведомлений</p></div></div></div>
 <div id="userMenu" class="user-menu"></div>
 
 <script>
 let socket=io(),currentRoom='Главная',username='{{ username }}',role='{{ role }}',dark=false,typingUsers={},currentMenuUser=null;
+let notifications=[],pendingFriendRequests=[];
 const msgDiv=document.getElementById('messagesList'),msgInput=document.getElementById('messageInput');
 const sidebar=document.getElementById('sidebar'),overlay=document.getElementById('sidebarOverlay');
 document.getElementById('menuBtn').onclick=()=>{sidebar.classList.add('open');overlay.style.display='block';};
 overlay.onclick=()=>{sidebar.classList.remove('open');overlay.style.display='none';};
 if(window.innerWidth>768){sidebar.classList.add('open');overlay.style.display='none';}
+function addNotification(title,text){notifications.unshift({title,text,time:new Date().toLocaleTimeString()});if(notifications.length>20)notifications.pop();updateNotifyBadge();updateNotificationsList();}
+function updateNotifyBadge(){let badge=document.getElementById('notifyBadge');let count=notifications.length+pendingFriendRequests.length;if(count>0){badge.textContent=count>99?'99+':count;badge.style.display='flex';}else{badge.style.display='none';}}
+function updateNotificationsList(){let container=document.getElementById('notificationsList');if(notifications.length===0&&pendingFriendRequests.length===0){container.innerHTML='<p style="color:#6b7280;text-align:center;padding:16px">Нет уведомлений</p>';return;}let html='';pendingFriendRequests.forEach(req=>{html+=`<div class="notification-item"><span>📨 Заявка в друзья от ${escape(req)}</span><button onclick="acceptReq('${escape(req)}')" style="background:#10b981;border:none;border-radius:20px;padding:6px 14px;color:#fff;cursor:pointer">Принять</button></div>`;});notifications.forEach(n=>{html+=`<div class="notification-item"><div><strong>${escape(n.title)}</strong><br><small>${escape(n.text)}</small><br><span style="font-size:10px;color:#6b7280">${n.time}</span></div></div>`;});container.innerHTML=html;}
+function loadRequests(){fetch('/get_requests').then(r=>r.json()).then(data=>{pendingFriendRequests=data.requests||[];updateNotifyBadge();});}
+document.getElementById('notifyBtn').onclick=()=>{document.getElementById('notifyModal').style.display='flex';updateNotificationsList();};
+document.getElementById('closeNotifyModal').onclick=()=>document.getElementById('notifyModal').style.display='none';
 const emojis=['😀','😂','❤️','👍','🎉','🔥','😍','🥹','😭','🤔','👋','🙏','✨','💯','😎','🥳'];
 const picker=document.getElementById('emojiPicker');
 picker.innerHTML=emojis.map(e=>`<div class="emoji">${e}</div>`).join('');
@@ -190,40 +204,44 @@ function showUserMenu(name,x,y){
         menu.innerHTML=`<button onclick="viewProfile('${name}')">👤 Профиль</button>`;
         if(!data.is_friend&&name!==username)menu.innerHTML+=`<button onclick="addFriend('${name}')">➕ В друзья</button>`;
         if(data.is_friend)menu.innerHTML+=`<button onclick="removeFriend('${name}')">❌ Удалить из друзей</button>`;
-        if(role==='owner'||role==='admin')menu.innerHTML+=`<button onclick="giveAdmin('${name}')">⭐ Выдать админку</button>`;
+        if(role==='owner'||role==='admin'){
+            if(data.user_role==='admin')menu.innerHTML+=`<button onclick="unadminUser('${name}')">🔻 Снять админку</button>`;
+            else if(data.user_role!=='owner')menu.innerHTML+=`<button onclick="giveAdmin('${name}')">⭐ Выдать админку</button>`;
+        }
         menu.style.display='block';menu.style.left=x+'px';menu.style.top=y+'px';currentMenuUser=name;
         setTimeout(()=>{if(menu.style.display==='block'){menu.style.display='none';currentMenuUser=null;}},4000);
     });
 }
 window.viewProfile=name=>fetch('/user_info/'+encodeURIComponent(name)).then(r=>r.json()).then(data=>alert(`${data.username}\n📝 ${data.bio||'Нет описания'}\n👫 Друзья: ${data.friends_count}\n⭐ ${data.role_display}`));
-window.addFriend=name=>{fetch('/add_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>addSystem(data.message));document.getElementById('userMenu').style.display='none';};
-window.removeFriend=name=>{fetch('/remove_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>addSystem(data.message));document.getElementById('userMenu').style.display='none';};
-window.giveAdmin=name=>{fetch('/give_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>addSystem(data.message));document.getElementById('userMenu').style.display='none';};
-function loadRequests(){fetch('/get_requests').then(r=>r.json()).then(data=>{let d=document.getElementById('requestsList');if(data.requests&&data.requests.length){d.innerHTML=data.requests.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;padding:10px;background:#f1f5f9;border-radius:20px;"><span>📨 ${escape(r)}</span><button onclick="acceptReq('${escape(r)}')" style="background:#10b981;border:none;border-radius:20px;padding:6px 14px;color:#fff;cursor:pointer;font-size:13px">Принять</button></div>`).join('');}else d.innerHTML='<p style="color:#6b7280;text-align:center;padding:16px">Нет заявок</p>';});}
-window.acceptReq=name=>{fetch('/accept_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);loadRequests();});};
-function addMessage(id,name,text,time,isOwn,avatar){let div=document.createElement('div');div.className=`message ${isOwn?'message-own':''}`;div.innerHTML=`<div class="message-avatar" onclick="showUserMenu('${escape(name)}', event.clientX, event.clientY)">${avatar||'👤'}</div><div class="message-content"><div class="message-name">${escape(name)}<span class="message-time">${time}</span></div><div class="message-text">${escape(text)}</div></div>`;msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;}
+window.addFriend=name=>{fetch('/add_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);addNotification('Заявка отправлена',`Вы отправили заявку ${name}`);});document.getElementById('userMenu').style.display='none';};
+window.removeFriend=name=>{fetch('/remove_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);addNotification('Друг удалён',`${name} удалён из друзей`);});document.getElementById('userMenu').style.display='none';};
+window.giveAdmin=name=>{fetch('/give_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);addNotification('Администратор',`${name} назначен администратором`);});document.getElementById('userMenu').style.display='none';};
+window.unadminUser=name=>{fetch('/remove_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);addNotification('Администратор',`У ${name} снята роль администратора`);});document.getElementById('userMenu').style.display='none';};
+window.acceptReq=name=>{fetch('/accept_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);addNotification('Новый друг',`Вы приняли заявку от ${name}`);pendingFriendRequests=pendingFriendRequests.filter(r=>r!==name);updateNotifyBadge();updateNotificationsList();loadRequests();});};
 function addSystem(t){let d=document.createElement('div');d.className='system-msg';d.textContent=t;msgDiv.appendChild(d);msgDiv.scrollTop=msgDiv.scrollHeight;}
+function addMessage(id,name,text,time,isOwn,avatar){let div=document.createElement('div');div.className=`message ${isOwn?'message-own':''}`;div.innerHTML=`<div class="message-avatar" onclick="showUserMenu('${escape(name)}', event.clientX, event.clientY)">${avatar||'👤'}</div><div class="message-content"><div class="message-name">${escape(name)}<span class="message-time">${time}</span></div><div class="message-text">${escape(text)}</div></div>`;msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;}
 function escape(s){return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);}
 socket.emit('join',{room:currentRoom});
 socket.on('history',h=>{msgDiv.innerHTML='';h.forEach(m=>addMessage(m.id,m.name,m.text,m.time,m.name===username,m.avatar));});
 socket.on('message',m=>addMessage(m.id,m.name,m.text,m.time,m.name===username,m.avatar));
 socket.on('system',d=>addSystem(d.text));
+socket.on('friend_request',data=>{addNotification('Заявка в друзья',`${data.from} хочет добавить вас в друзья`);loadRequests();});
 socket.on('rooms',l=>{let c=document.getElementById('roomsList');c.innerHTML=l.map(r=>`<div class="room-item ${r===currentRoom?'active':''}" data-room="${r}">🏠 ${escape(r)}</div>`).join('');document.querySelectorAll('.room-item').forEach(el=>{el.onclick=()=>{let nr=el.dataset.room;if(nr===currentRoom)return;socket.emit('switch',{old:currentRoom,new:nr});currentRoom=nr;document.getElementById('roomName').innerText=currentRoom;document.querySelectorAll('.room-item').forEach(i=>i.classList.remove('active'));el.classList.add('active');msgDiv.innerHTML='<div class="system-msg">⏳ Загрузка...</div>';if(window.innerWidth<768){sidebar.classList.remove('open');overlay.style.display='none';}};});});});
-socket.on('users',l=>{let c=document.getElementById('usersList');c.innerHTML=l.map(u=>`<div class="user-item" onclick="showUserMenu('${escape(u.name)}', event.clientX, event.clientY)"><span class="online-dot"></span> ${u.avatar||'👤'} ${escape(u.name)} ${u.role==='owner'?'<span class="badge-owner">ВЛ</span>':(u.role==='admin'?'<span class="badge-admin">АДМ</span>':'')}</div>`).join('');document.getElementById('onlineCount').innerText=`👥 ${l.length}`;});
+socket.on('users',l=>{let c=document.getElementById('usersList');c.innerHTML=l.map(u=>`<div class="user-item" onclick="showUserMenu('${escape(u.name)}', event.clientX, event.clientY)"><span class="online-dot"></span> ${u.avatar||'👤'} ${escape(u.name)} ${u.role==='owner'?'<span class="badge-owner">ВЛ</span>':(u.role==='admin'?'<span class="badge-admin">АДМ</span>':'')}</div>`).join('');document.getElementById('onlineCount').innerHTML=`👥 ${l.length}`;});
 socket.on('friends',l=>{let c=document.getElementById('friendsList');if(c)c.innerHTML=l.map(f=>`<div class="user-item" onclick="viewProfile('${escape(f.name)}')">👫 ${escape(f.name)}</div>`).join('');});
 socket.on('typing',d=>{if(d.typing)typingUsers[d.name]=true;else delete typingUsers[d.name];let n=Object.keys(typingUsers).filter(n=>n!==username);document.getElementById('typingStatus').innerText=n.length?(n.length===1?`${n[0]} печатает...`:`${n.length} человек печатают...`):'';});
-document.getElementById('sendBtn').onclick=()=>{let t=msgInput.value.trim();if(!t)return;if(t.startsWith('/giveadmin ')&&role==='owner'){let target=t.split(' ')[1];fetch('/give_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:target})}).then(r=>r.json()).then(data=>addSystem(data.message));msgInput.value='';return;}if(t.startsWith('/unadmin ')&&role==='owner'){let target=t.split(' ')[1];fetch('/remove_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:target})}).then(r=>r.json()).then(data=>addSystem(data.message));msgInput.value='';return;}socket.emit('message',{text:t,room:currentRoom});msgInput.value='';};
+document.getElementById('sendBtn').onclick=()=>{let t=msgInput.value.trim();if(!t)return;socket.emit('message',{text:t,room:currentRoom});msgInput.value='';};
 msgInput.onkeypress=e=>{if(e.key==='Enter')document.getElementById('sendBtn').click();socket.emit('typing',{room:currentRoom,typing:true});clearTimeout(window.tt);window.tt=setTimeout(()=>socket.emit('typing',{room:currentRoom,typing:false}),1000);};
 document.getElementById('createRoomBtn')?.addEventListener('click',()=>{let n=document.getElementById('newRoom').value.trim();if(n){socket.emit('create',{room:n});document.getElementById('newRoom').value='';}});
 document.getElementById('profileBtn').onclick=()=>document.getElementById('profileModal').style.display='flex';
-document.getElementById('settingsBtn').onclick=()=>{document.getElementById('settingsModal').style.display='flex';loadRequests();};
+document.getElementById('settingsBtn').onclick=()=>document.getElementById('settingsModal').style.display='flex';
 document.getElementById('closeProfile').onclick=()=>document.getElementById('profileModal').style.display='none';
 document.getElementById('closeSettings').onclick=()=>document.getElementById('settingsModal').style.display='none';
-window.onclick=e=>{if(e.target===document.getElementById('profileModal'))document.getElementById('profileModal').style.display='none';if(e.target===document.getElementById('settingsModal'))document.getElementById('settingsModal').style.display='none';};
+window.onclick=e=>{if(e.target===document.getElementById('profileModal'))document.getElementById('profileModal').style.display='none';if(e.target===document.getElementById('settingsModal'))document.getElementById('settingsModal').style.display='none';if(e.target===document.getElementById('notifyModal'))document.getElementById('notifyModal').style.display='none';};
 document.getElementById('saveProfile').onclick=()=>{fetch('/update_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:document.getElementById('avatarInput').value,bio:document.getElementById('bioInput').value,new_name:document.getElementById('newName').value,new_password:document.getElementById('newPass').value})}).then(r=>r.json()).then(data=>{if(data.success){alert('Сохранено! Страница перезагрузится.');location.reload();}else alert('Ошибка: '+data.error);});};
 document.getElementById('themeBtn').onclick=()=>{dark=!dark;if(dark)document.body.classList.add('dark');else document.body.classList.remove('dark');fetch('/save_theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:dark?'dark':'light'})});};
 document.getElementById('logoutBtn').onclick=()=>window.location.href='/logout';
-socket.emit('get_rooms');socket.emit('get_users');
+loadRequests();socket.emit('get_rooms');socket.emit('get_users');
 </script>
 </body>
 </html>'''
@@ -308,11 +326,12 @@ def give_admin():
     if 'username' not in session or users[session['username']]['role'] != 'owner':
         return jsonify({'message': 'Только владелец'})
     target = request.json.get('username')
-    if target in users and users[target]['role'] != 'owner':
+    if target in users and users[target]['role'] != 'owner' and users[target]['role'] != 'admin':
         users[target]['role'] = 'admin'
         save_users(users)
+        socketio.emit('system', {'text': f'⭐ {target} назначен администратором!'}, broadcast=True)
         return jsonify({'message': f'{target} теперь админ'})
-    return jsonify({'message': 'Не найден'})
+    return jsonify({'message': 'Не найден или уже админ'})
 
 @app.route('/remove_admin', methods=['POST'])
 def remove_admin():
@@ -322,8 +341,9 @@ def remove_admin():
     if target in users and users[target]['role'] == 'admin':
         users[target]['role'] = 'user'
         save_users(users)
+        socketio.emit('system', {'text': f'🔻 У {target} снята роль администратора'}, broadcast=True)
         return jsonify({'message': f'У {target} снята админка'})
-    return jsonify({'message': 'Не найден'})
+    return jsonify({'message': 'Не найден или не админ'})
 
 @app.route('/add_friend', methods=['POST'])
 def add_friend():
@@ -341,6 +361,7 @@ def add_friend():
         return jsonify({'message': 'Заявка уже отправлена'})
     users[target]['requests'].append(name)
     save_users(users)
+    socketio.emit('friend_request', {'from': name}, to=target)
     return jsonify({'message': f'Заявка отправлена {target}'})
 
 @app.route('/accept_friend', methods=['POST'])
@@ -383,7 +404,7 @@ def user_info(name):
     u = users[name]
     is_friend = name in users.get(session.get('username', ''), {}).get('friends', []) if session.get('username') else False
     role_display = {'owner': 'Владелец', 'admin': 'Админ', 'user': 'Пользователь'}.get(u['role'], 'Пользователь')
-    return jsonify({'username': name, 'bio': u.get('bio', ''), 'role_display': role_display, 'friends_count': len(u.get('friends', [])), 'is_friend': is_friend})
+    return jsonify({'username': name, 'bio': u.get('bio', ''), 'role_display': role_display, 'user_role': u['role'], 'friends_count': len(u.get('friends', [])), 'is_friend': is_friend})
 
 @socketio.on('join')
 def on_join(data):
