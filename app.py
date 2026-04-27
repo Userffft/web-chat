@@ -5,25 +5,29 @@ import os
 import json
 
 app = Flask(__name__)
-app.secret_key = 'secret-key-change-this'
+app.secret_key = 'secret-key-change-this-in-production'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Файлы для хранения данных
 USERS_FILE = 'users.json'
 MESSAGES_FILE = 'messages.json'
 
-# Загрузка пользователей
 def load_users():
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r') as f:
-            return json.load(f)
-    return {'admin': {'password': 'admin123', 'role': 'admin'}}  # admin/admin123
+            users = json.load(f)
+            # Проверяем, есть ли хоть один админ
+            has_admin = any(u.get('role') == 'admin' for u in users.values())
+            if not has_admin:
+                users['admin'] = {'password': 'admin123', 'role': 'admin'}
+                save_users(users)
+            return users
+    # Первый запуск — создаём только админа
+    return {'admin': {'password': 'admin123', 'role': 'admin'}}
 
 def save_users(users):
     with open(USERS_FILE, 'w') as f:
         json.dump(users, f)
 
-# Загрузка сообщений
 def load_messages():
     if os.path.exists(MESSAGES_FILE):
         with open(MESSAGES_FILE, 'r') as f:
@@ -46,6 +50,7 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    error = None
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -53,33 +58,26 @@ def login():
             session['username'] = username
             session['role'] = users[username]['role']
             return redirect(url_for('index'))
-        return 'Неверное имя или пароль', 401
-    return '''
-        <form method="post">
-            <input name="username" placeholder="Имя">
-            <input name="password" type="password" placeholder="Пароль">
-            <button>Войти</button>
-        </form>
-        <a href="/register">Регистрация</a>
-    '''
+        error = 'Неверное имя пользователя или пароль'
+    return render_template('login.html', error=error)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    error = None
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         if username in users:
-            return 'Пользователь уже существует', 400
-        users[username] = {'password': password, 'role': 'user'}
-        save_users(users)
-        return redirect(url_for('login'))
-    return '''
-        <form method="post">
-            <input name="username" placeholder="Имя">
-            <input name="password" type="password" placeholder="Пароль">
-            <button>Зарегистрироваться</button>
-        </form>
-    '''
+            error = 'Пользователь уже существует'
+        elif len(username) < 3:
+            error = 'Имя должно содержать минимум 3 символа'
+        elif len(password) < 4:
+            error = 'Пароль должен содержать минимум 4 символа'
+        else:
+            users[username] = {'password': password, 'role': 'user'}
+            save_users(users)
+            return redirect(url_for('login'))
+    return render_template('register.html', error=error)
 
 @app.route('/logout')
 def logout():
@@ -101,6 +99,17 @@ def handle_message(data):
     room = data['room']
     time_str = datetime.now().strftime('%H:%M:%S')
     msg_id = str(int(datetime.now().timestamp() * 1000))
+    
+    # Команда для выдачи админки
+    if text.startswith('/giveadmin ') and role == 'admin':
+        target = text.split(' ')[1]
+        if target in users:
+            users[target]['role'] = 'admin'
+            save_users(users)
+            emit('system', f'⭐ {target} теперь администратор!', to=room, broadcast=True)
+            socketio.emit('users_update', to=room, broadcast=True)
+        return
+    
     message = {'id': msg_id, 'name': username, 'text': text, 'time': time_str, 'role': role, 'deleted': False}
     
     history.setdefault(room, []).append(message)
