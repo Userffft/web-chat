@@ -1,10 +1,11 @@
 from flask import Flask, render_template
 from flask_socketio import SocketIO, send, emit, join_room, leave_room
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Хранилище сообщений
 history = {
@@ -12,7 +13,7 @@ history = {
     'Случайная': [],
     'Помощь': []
 }
-MAX_HISTORY = 100
+MAX_HISTORY = 50
 
 @app.route('/')
 def index():
@@ -51,4 +52,5 @@ def handle_switch_room(data):
     send(f'{name} перешёл в комнату {new_room}', to=new_room, broadcast=True)
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=8080, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port)
