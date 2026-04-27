@@ -3,11 +3,11 @@ import json
 import hashlib
 import random
 from datetime import datetime, timedelta
-from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
+from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify, Response
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey2024'
+app.secret_key = 'secret-key-2024'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 DB_PATH = 'db'
@@ -19,13 +19,14 @@ ROOMS_FILE = os.path.join(DB_PATH, 'rooms.json')
 FRIENDS_FILE = os.path.join(DB_PATH, 'friends.json')
 DMS_FILE = os.path.join(DB_PATH, 'dms.json')
 
+# -------------------------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ --------------------------
 def load_users():
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r') as f:
             return json.load(f)
     return {
-        'MrAizex': {'password': hashlib.sha256('admin123'.encode()).hexdigest(), 'role': 'owner', 'avatar': '👑', 'bio': 'Владелец', 'banned': False, 'muted_until': None, 'online': False, 'user_id': str(random.randint(1000, 99999999)), 'id_change_count': 0, 'last_id_change': None},
-        'dimooon': {'password': hashlib.sha256('1111'.encode()).hexdigest(), 'role': 'admin', 'avatar': '😎', 'bio': 'Админ', 'banned': False, 'muted_until': None, 'online': False, 'user_id': str(random.randint(1000, 99999999)), 'id_change_count': 0, 'last_id_change': None}
+        'MrAizex': {'password': hashlib.sha256('admin123'.encode()).hexdigest(), 'role': 'owner', 'avatar': '👑', 'avatar_base64': None, 'bio': 'Владелец', 'banned': False, 'muted_until': None, 'online': False, 'user_id': str(random.randint(1000, 99999999)), 'id_change_count': 0, 'last_id_change': None},
+        'dimooon': {'password': hashlib.sha256('1111'.encode()).hexdigest(), 'role': 'admin', 'avatar': '😎', 'avatar_base64': None, 'bio': 'Админ', 'banned': False, 'muted_until': None, 'online': False, 'user_id': str(random.randint(1000, 99999999)), 'id_change_count': 0, 'last_id_change': None}
     }
 
 def save_users(u):
@@ -78,7 +79,7 @@ rooms = load_rooms()
 friends = load_friends()
 dms = load_dms()
 
-# HTML-шаблоны
+# -------------------------- HTML ШАБЛОНЫ --------------------------
 LOGIN_HTML = '''
 <!DOCTYPE html>
 <html>
@@ -255,21 +256,19 @@ function openDM(t){
     fetch('/get_dm/'+encodeURIComponent(t)).then(r=>r.json()).then(data=>{
         msgDiv.innerHTML='';
         data.messages.forEach(m=>{
-            addDM(m.from,m.text,m.time,m.from===username);
+            let timeStr=m.time;
+            if(m.timestamp) timeStr=new Date(m.timestamp).toLocaleString();
+            let div=document.createElement('div');div.className=`message ${m.from===username?'message-own':''}`;
+            let badge='';if(m.from==='MrAizex')badge='<span class="badge-owner">ВЛ</span>';else if(m.from==='dimooon')badge='<span class="badge-admin">АДМ</span>';
+            fetch('/user_avatar/'+encodeURIComponent(m.from)).then(r=>r.json()).then(avatar=>{
+                let avatarHtml=avatar.avatar_base64?`<img src="${avatar.avatar_base64}">`:'👤';
+                div.innerHTML=`
+                    <div class="message-avatar" onclick="showUserProfile('${escape(m.from)}')">${avatarHtml}</div>
+                    <div class="message-content"><div class="message-name">${escape(m.from)}${badge}<span class="message-time">${timeStr}</span></div><div class="message-text">${escape(m.text)}</div></div>
+                `;
+                msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;
+            });
         });
-    });
-}
-function addDM(name,text,time,isOwn){
-    let div=document.createElement('div');div.className=`message ${isOwn?'message-own':''}`;
-    let badge='';if(name==='MrAizex')badge='<span class="badge-owner">ВЛ</span>';else if(name==='dimooon')badge='<span class="badge-admin">АДМ</span>';
-    let avatarUrl=name===username? '{% if avatar_base64 %}{{ avatar_base64 }}{% else %}{{ avatar }}{% endif %}' : '';
-    fetch('/user_avatar/'+encodeURIComponent(name)).then(r=>r.json()).then(avatar=>{
-        let avatarHtml=avatar.avatar_base64?`<img src="${avatar.avatar_base64}">`:'👤';
-        div.innerHTML=`
-            <div class="message-avatar" onclick="showUserProfile('${escape(name)}')">${avatarHtml}</div>
-            <div class="message-content"><div class="message-name">${escape(name)}${badge}<span class="message-time">${time}</span></div><div class="message-text">${escape(text)}</div></div>
-        `;
-        msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;
     });
 }
 document.getElementById('dmSendBtn')?.addEventListener('click',function(){
@@ -277,12 +276,29 @@ document.getElementById('dmSendBtn')?.addEventListener('click',function(){
     if(txt&&currentDMTarget){
         socket.emit('private_message',{target:currentDMTarget,text:txt});
         document.getElementById('dmInput').value='';
-        addDM(username,txt,new Date().toLocaleTimeString(),true);
+        let timeStr=new Date().toLocaleString();
+        let div=document.createElement('div');div.className='message message-own';
+        div.innerHTML=`
+            <div class="message-avatar">{% if avatar_base64 %}<img src="{{ avatar_base64 }}">{% else %}{{ avatar }}{% endif %}</div>
+            <div class="message-content"><div class="message-name">{{ username }}<span class="message-time">${timeStr}</span></div><div class="message-text">${escape(txt)}</div></div>
+        `;
+        msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;
     }
 });
 socket.on('private_message',(data)=>{
     if(isDMmode && (data.from===currentDMTarget || data.to===currentDMTarget)){
-        addDM(data.from,data.text,data.time,data.from===username);
+        let timeStr=data.time;
+        if(data.timestamp) timeStr=new Date(data.timestamp).toLocaleString();
+        let div=document.createElement('div');div.className=`message ${data.from===username?'message-own':''}`;
+        let badge='';if(data.from==='MrAizex')badge='<span class="badge-owner">ВЛ</span>';else if(data.from==='dimooon')badge='<span class="badge-admin">АДМ</span>';
+        fetch('/user_avatar/'+encodeURIComponent(data.from)).then(r=>r.json()).then(avatar=>{
+            let avatarHtml=avatar.avatar_base64?`<img src="${avatar.avatar_base64}">`:'👤';
+            div.innerHTML=`
+                <div class="message-avatar" onclick="showUserProfile('${escape(data.from)}')">${avatarHtml}</div>
+                <div class="message-content"><div class="message-name">${escape(data.from)}${badge}<span class="message-time">${timeStr}</span></div><div class="message-text">${escape(data.text)}</div></div>
+            `;
+            msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;
+        });
     }
     if(!isDMmode)addNotification('Личное сообщение',`${data.from}: ${data.text.substring(0,30)}`);
     loadDMList();
@@ -512,6 +528,10 @@ def logout():
         socketio.emit('user_offline', {'name': session['username']}, broadcast=True)
     session.clear(); return redirect(url_for('login'))
 
+@app.route('/save_theme', methods=['POST'])
+def save_theme():
+    return jsonify({'success': True})
+
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     if 'username' not in session: return jsonify({'error': 'Not logged'}), 401
@@ -595,10 +615,11 @@ def mute_user():
 def unmute_user():
     if 'username' not in session or users[session['username']]['role'] not in ['owner', 'admin']: return jsonify({'message': 'Нет прав'})
     target = request.json.get('username')
-    if target not in users: return jsonify({'message': 'Не найден'})
-    users[target]['muted_until'] = None; save_users(users)
-    socketio.emit('system', {'text': f'🔊 {target} размучен!'}, broadcast=True)
-    return jsonify({'message': f'{target} размучен'})
+    if target in users:
+        users[target]['muted_until'] = None; save_users(users)
+        socketio.emit('system', {'text': f'🔊 {target} размучен!'}, broadcast=True)
+        return jsonify({'message': f'{target} размучен'})
+    return jsonify({'message': 'Не найден'})
 
 @app.route('/ban_user', methods=['POST'])
 def ban_user():
@@ -727,6 +748,7 @@ def get_dm(target):
     return jsonify({'messages': msgs})
 
 # -------------------------- SOCKET.IO --------------------------
+
 @socketio.on('connect')
 def on_connect():
     username = session.get('username')
