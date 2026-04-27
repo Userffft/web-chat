@@ -19,8 +19,26 @@ def load_users():
         with open(USERS_FILE, 'r') as f:
             return json.load(f)
     return {
-        'MrAizex': {'password': hashlib.sha256('admin123'.encode()).hexdigest(), 'role': 'owner', 'avatar': '👑', 'bio': 'Владелец', 'friends': [], 'requests': [], 'banned': False, 'theme': 'light'},
-        'dimooon': {'password': hashlib.sha256('1111'.encode()).hexdigest(), 'role': 'admin', 'avatar': '😎', 'bio': 'Админ', 'friends': [], 'requests': [], 'banned': False, 'theme': 'light'}
+        'MrAizex': {
+            'password': hashlib.sha256('admin123'.encode()).hexdigest(),
+            'role': 'owner',
+            'avatar': '👑',
+            'bio': 'Владелец чата',
+            'friends': [],
+            'requests': [],
+            'banned': False,
+            'theme': 'light'
+        },
+        'dimooon': {
+            'password': hashlib.sha256('1111'.encode()).hexdigest(),
+            'role': 'admin',
+            'avatar': '😎',
+            'bio': 'Главный админ',
+            'friends': [],
+            'requests': [],
+            'banned': False,
+            'theme': 'light'
+        }
     }
 
 def save_users(u): json.dump(u, open(USERS_FILE, 'w'))
@@ -121,18 +139,23 @@ socket.emit('get_rooms');socket.emit('get_users');
 # === МАРШРУТЫ ===
 @app.route('/')
 def index():
-    if 'username' not in session: return redirect(url_for('login'))
+    if 'username' not in session:
+        return redirect(url_for('login'))
     u = users.get(session['username'])
-    if not u or u.get('banned'): session.clear(); return redirect(url_for('login'))
+    if not u or u.get('banned'):
+        session.clear()
+        return redirect(url_for('login'))
     return render_template_string(CHAT, username=session['username'], role=u['role'], avatar=u.get('avatar','👤'), bio=u.get('bio',''))
 
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
-        name, pwd = request.form['username'], request.form['password']
+        name = request.form['username']
+        pwd = request.form['password']
         h = hashlib.sha256(pwd.encode()).hexdigest()
         if name in users and users[name]['password'] == h:
-            if users[name].get('banned'): return render_template_string(LOGIN, error='Заблокирован')
+            if users[name].get('banned'):
+                return render_template_string(LOGIN, error='Заблокирован')
             session['username'] = name
             return redirect(url_for('index'))
         return render_template_string(LOGIN, error='Неверные данные')
@@ -141,69 +164,103 @@ def login():
 @app.route('/register', methods=['GET','POST'])
 def register():
     if request.method == 'POST':
-        name, pwd = request.form['username'], request.form['password']
-        if name in users: return render_template_string(REG, error='Имя занято')
-        if len(name)<3 or len(name)>20: return render_template_string(REG, error='Имя 3-20')
-        if len(pwd)<4: return render_template_string(REG, error='Пароль мин 4')
+        name = request.form['username']
+        pwd = request.form['password']
+        if name in users:
+            return render_template_string(REG, error='Имя занято')
+        if len(name) < 3 or len(name) > 20:
+            return render_template_string(REG, error='Имя 3-20')
+        if len(pwd) < 4:
+            return render_template_string(REG, error='Пароль мин 4')
         users[name] = {'password': hashlib.sha256(pwd.encode()).hexdigest(), 'role': 'user', 'avatar': '👤', 'bio': '', 'friends': [], 'requests': [], 'banned': False, 'theme': 'light'}
         save_users(users)
         return redirect(url_for('login'))
     return render_template_string(REG)
 
 @app.route('/logout')
-def logout(): session.clear(); return redirect(url_for('login'))
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 @app.route('/save_theme', methods=['POST'])
 def save_theme():
-    if 'username' in session: users[session['username']]['theme'] = request.json.get('theme', 'light'); save_users(users)
+    if 'username' in session:
+        users[session['username']]['theme'] = request.json.get('theme', 'light')
+        save_users(users)
     return jsonify({'success': True})
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
-    if 'username' not in session: return jsonify({'error': 'Not logged'}), 401
-    name = session['username']; data = request.json
-    if data.get('avatar'): users[name]['avatar'] = data['avatar'][:2]
-    if data.get('bio') is not None: users[name]['bio'] = data['bio'][:200]
+    if 'username' not in session:
+        return jsonify({'error': 'Not logged'}), 401
+    name = session['username']
+    data = request.json
+    if data.get('avatar'):
+        users[name]['avatar'] = data['avatar'][:2]
+    if data.get('bio') is not None:
+        users[name]['bio'] = data['bio'][:200]
     if data.get('new_name'):
         nn = data['new_name']
-        if len(nn)<3 or len(nn)>20: return jsonify({'error': 'Имя 3-20'}), 400
-        if nn in users and nn != name: return jsonify({'error': 'Имя занято'}), 400
-        users[nn] = users.pop(name); session['username'] = nn
-    if data.get('new_password') and len(data['new_password'])>=4: users[session['username']]['password'] = hashlib.sha256(data['new_password'].encode()).hexdigest()
+        if len(nn) < 3 or len(nn) > 20:
+            return jsonify({'error': 'Имя 3-20'}), 400
+        if nn in users and nn != name:
+            return jsonify({'error': 'Имя занято'}), 400
+        users[nn] = users.pop(name)
+        session['username'] = nn
+        name = nn
+    if data.get('new_password') and len(data['new_password']) >= 4:
+        users[name]['password'] = hashlib.sha256(data['new_password'].encode()).hexdigest()
     save_users(users)
     return jsonify({'success': True})
 
 @app.route('/give_admin', methods=['POST'])
 def give_admin():
-    if 'username' not in session or users[session['username']]['role'] != 'owner': return jsonify({'message': 'Только владелец'})
+    if 'username' not in session or users[session['username']]['role'] != 'owner':
+        return jsonify({'message': 'Только владелец'})
     target = request.json.get('username')
-    if target in users and users[target]['role'] != 'owner': users[target]['role'] = 'admin'; save_users(users); return jsonify({'message': f'{target} теперь админ'})
+    if target in users and users[target]['role'] != 'owner':
+        users[target]['role'] = 'admin'
+        save_users(users)
+        return jsonify({'message': f'{target} теперь админ'})
     return jsonify({'message': 'Не найден'})
 
 @app.route('/remove_admin', methods=['POST'])
 def remove_admin():
-    if 'username' not in session or users[session['username']]['role'] != 'owner': return jsonify({'message': 'Только владелец'})
+    if 'username' not in session or users[session['username']]['role'] != 'owner':
+        return jsonify({'message': 'Только владелец'})
     target = request.json.get('username')
-    if target in users and users[target]['role'] == 'admin': users[target]['role'] = 'user'; save_users(users); return jsonify({'message': f'У {target} снята админка'})
+    if target in users and users[target]['role'] == 'admin':
+        users[target]['role'] = 'user'
+        save_users(users)
+        return jsonify({'message': f'У {target} снята админка'})
     return jsonify({'message': 'Не найден'})
 
 @app.route('/add_friend', methods=['POST'])
 def add_friend():
-    if 'username' not in session: return jsonify({'message': 'Войдите'})
-    name = session['username']; target = request.json.get('friend')
-    if target not in users: return jsonify({'message': 'Не найден'})
-    if target == name: return jsonify({'message': 'Себя нельзя'})
-    if target in users[name]['friends']: return jsonify({'message': 'Уже друг'})
-    if target in users[name]['requests']: return jsonify({'message': 'Заявка уже отправлена'})
+    if 'username' not in session:
+        return jsonify({'message': 'Войдите'})
+    name = session['username']
+    target = request.json.get('friend')
+    if target not in users:
+        return jsonify({'message': 'Не найден'})
+    if target == name:
+        return jsonify({'message': 'Себя нельзя'})
+    if target in users[name]['friends']:
+        return jsonify({'message': 'Уже друг'})
+    if target in users[name]['requests']:
+        return jsonify({'message': 'Заявка уже отправлена'})
     users[target]['requests'].append(name)
     save_users(users)
     return jsonify({'message': f'Заявка отправлена {target}'})
 
 @app.route('/accept_friend', methods=['POST'])
 def accept_friend():
-    if 'username' not in session: return jsonify({'message': 'Войдите'})
-    name = session['username']; target = request.json.get('friend')
-    if target not in users[name]['requests']: return jsonify({'message': 'Нет заявки'})
+    if 'username' not in session:
+        return jsonify({'message': 'Войдите'})
+    name = session['username']
+    target = request.json.get('friend')
+    if target not in users[name]['requests']:
+        return jsonify({'message': 'Нет заявки'})
     users[name]['requests'].remove(target)
     users[name]['friends'].append(target)
     users[target]['friends'].append(name)
@@ -212,8 +269,10 @@ def accept_friend():
 
 @app.route('/remove_friend', methods=['POST'])
 def remove_friend():
-    if 'username' not in session: return jsonify({'message': 'Войдите'})
-    name = session['username']; target = request.json.get('friend')
+    if 'username' not in session:
+        return jsonify({'message': 'Войдите'})
+    name = session['username']
+    target = request.json.get('friend')
     if target in users[name]['friends']:
         users[name]['friends'].remove(target)
         users[target]['friends'].remove(name)
@@ -223,16 +282,14 @@ def remove_friend():
 
 @app.route('/get_requests')
 def get_requests():
-    if 'username' not in session: return jsonify({'requests': []})
+    if 'username' not in session:
+        return jsonify({'requests': []})
     return jsonify({'requests': users[session['username']].get('requests', [])})
 
 @app.route('/user_info/<name>')
 def user_info(name):
-    if name not in users: return jsonify({'error': 'Not found'}), 404
+    if name not in users:
+        return jsonify({'error': 'Not found'}), 404
     u = users[name]
-    is_friend = name in users.get(session.get('username',''), {}).get('friends', []) if session.get('username') else False
-    return jsonify({
-        'username': name,
-        'bio': u.get('bio', ''),
-        'role_display': {'owner': 'Владелец', 'admin': 'Ад'}
-        
+    is_friend = False
+    if session.get('username') and session['username']
