@@ -174,7 +174,6 @@ let currentMenuUser = null;
 const msgDiv = document.getElementById('messagesList');
 const msgInput = document.getElementById('messageInput');
 
-// Эмодзи-пикер
 const emojis = ['😀','😂','❤️','👍','🎉','🔥','😍','🥹','😭','🤔','👋','🙏','✨','💯','😎','🥳','😡','🤯','🥰','😱'];
 const picker = document.getElementById('emojiPicker');
 if(picker) {
@@ -209,9 +208,9 @@ function showUserMenu(name, x, y) {
     }
     fetch('/user_info/' + encodeURIComponent(name)).then(r => r.json()).then(data => {
         menu.innerHTML = `
-            <button onclick="viewProfile('${name}')">👤 Просмотр профиля</button>
+            <button onclick="viewProfile('${name}')">👤 Профиль</button>
             ${!data.is_friend && name !== username ? `<button onclick="addFriend('${name}')">➕ В друзья</button>` : ''}
-            ${data.is_friend ? `<button onclick="removeFriend('${name}')">❌ Удалить из друзей</button>` : ''}
+            ${data.is_friend ? `<button onclick="removeFriend('${name}')">❌ Удалить</button>` : ''}
             ${(role === 'owner' || role === 'admin') ? `<button onclick="giveAdmin('${name}')">⭐ Выдать админку</button>` : ''}
         `;
         menu.style.display = 'block';
@@ -421,7 +420,7 @@ def index():
     if not u or u.get('banned'):
         session.clear()
         return redirect(url_for('login'))
-    role_names = {'owner': 'Владелец', 'admin': 'Админ', 'moderator': 'Модератор', 'user': 'Пользователь'}
+    role_names = {'owner': 'Владелец', 'admin': 'Админ', 'user': 'Пользователь'}
     return render_template_string(CHAT_HTML, 
         username=session['username'],
         role=u['role'],
@@ -456,4 +455,6 @@ def register():
         if len(pwd) < 4:
             return render_template_string(REGISTER_HTML, error='Пароль минимум 4 символа')
         users[name] = {
-            'password': hashlib.sha256(pwd
+            'password': hashlib.sha256(pwd.encode()).hexdigest(),
+            'role': 'user',
+            'avatar': '
