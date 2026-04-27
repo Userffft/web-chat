@@ -1,19 +1,19 @@
-from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
+from flask import Flask, render_template_string, request, session, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
 import os
 import json
 import hashlib
-import base64
 
 app = Flask(__name__)
 app.secret_key = 'chatic-super-secret-key-2024'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Файлы для хранения данных
+# ==================== ФАЙЛЫ ДАННЫХ ====================
 USERS_FILE = 'users.json'
 MESSAGES_FILE = 'messages.json'
 ROOMS_FILE = 'rooms.json'
+SETTINGS_FILE = 'settings.json'
 
 def load_users():
     if os.path.exists(USERS_FILE):
@@ -25,7 +25,14 @@ def load_users():
             'role': 'owner',
             'avatar': '👑',
             'banned': False,
-            'created_at': datetime.now().isoformat()
+            'theme': 'light'
+        },
+        'dimooon': {
+            'password': hashlib.sha256('1111'.encode()).hexdigest(),
+            'role': 'admin',
+            'avatar': '😎',
+            'banned': False,
+            'theme': 'light'
         }
     }
 
@@ -57,8 +64,8 @@ users = load_users()
 messages = load_messages()
 rooms = load_rooms()
 
-# HTML шаблоны
-LOGIN_TEMPLATE = '''
+# ==================== HTML ШАБЛОНЫ ====================
+LOGIN_PAGE = '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -78,23 +85,22 @@ LOGIN_TEMPLATE = '''
             padding: 20px;
         }
         .card {
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.98);
             border-radius: 48px;
             padding: 48px;
             max-width: 440px;
             width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+            text-align: center;
         }
         h1 {
-            text-align: center;
-            margin-bottom: 8px;
             font-size: 2.5rem;
             background: linear-gradient(135deg, #667eea, #764ba2);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
         }
-        .subtitle { text-align: center; color: #6b7280; margin-bottom: 32px; }
+        .subtitle { color: #6b7280; margin-bottom: 32px; }
         input {
             width: 100%;
             padding: 16px 20px;
@@ -103,6 +109,7 @@ LOGIN_TEMPLATE = '''
             margin-bottom: 16px;
             font-size: 16px;
             outline: none;
+            transition: all 0.2s;
         }
         input:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
         button {
@@ -115,10 +122,21 @@ LOGIN_TEMPLATE = '''
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
+            transition: transform 0.2s;
         }
         button:hover { transform: translateY(-2px); }
-        .error { background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 24px; margin-bottom: 20px; text-align: center; }
-        .footer { text-align: center; margin-top: 24px; color: #6b7280; }
+        .error {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 12px;
+            border-radius: 24px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .footer {
+            margin-top: 24px;
+            color: #6b7280;
+        }
         a { color: #667eea; text-decoration: none; font-weight: 500; }
     </style>
 </head>
@@ -138,7 +156,7 @@ LOGIN_TEMPLATE = '''
 </html>
 '''
 
-REGISTER_TEMPLATE = '''
+REGISTER_PAGE = '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -158,21 +176,20 @@ REGISTER_TEMPLATE = '''
             padding: 20px;
         }
         .card {
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.98);
             border-radius: 48px;
             padding: 48px;
             max-width: 440px;
             width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
         }
         h1 {
             text-align: center;
-            margin-bottom: 32px;
             font-size: 2rem;
             background: linear-gradient(135deg, #667eea, #764ba2);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            margin-bottom: 32px;
         }
         input {
             width: 100%;
@@ -196,8 +213,19 @@ REGISTER_TEMPLATE = '''
             cursor: pointer;
         }
         button:hover { transform: translateY(-2px); }
-        .error { background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 24px; margin-bottom: 20px; text-align: center; }
-        .footer { text-align: center; margin-top: 24px; color: #6b7280; }
+        .error {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 12px;
+            border-radius: 24px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 24px;
+            color: #6b7280;
+        }
         a { color: #667eea; text-decoration: none; font-weight: 500; }
     </style>
 </head>
@@ -206,8 +234,8 @@ REGISTER_TEMPLATE = '''
         <h1>📝 Создать аккаунт</h1>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form method="post">
-            <input type="text" name="username" placeholder="Имя (от 3 до 20 символов)" required autofocus>
-            <input type="password" name="password" placeholder="Пароль (мин. 4 символа)" required>
+            <input type="text" name="username" placeholder="Имя (3-20 символов)" required autofocus>
+            <input type="password" name="password" placeholder="Пароль (мин. 4)" required>
             <button type="submit">Зарегистрироваться</button>
         </form>
         <div class="footer">Уже есть аккаунт? <a href="/login">Войти</a></div>
@@ -216,7 +244,7 @@ REGISTER_TEMPLATE = '''
 </html>
 '''
 
-CHAT_TEMPLATE = '''
+CHAT_PAGE = '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -236,8 +264,8 @@ CHAT_TEMPLATE = '''
         }
         .app { display: flex; height: 100vh; }
         .sidebar {
-            width: 300px;
-            background: rgba(255,255,255,0.95);
+            width: 280px;
+            background: rgba(255,255,255,0.98);
             backdrop-filter: blur(10px);
             border-right: 1px solid rgba(0,0,0,0.1);
             display: flex;
@@ -250,9 +278,9 @@ CHAT_TEMPLATE = '''
             color: white;
             text-align: center;
         }
-        .user-avatar { font-size: 64px; margin-bottom: 12px; cursor: pointer; }
-        .user-name { font-size: 1.3rem; font-weight: 700; }
-        .user-role { font-size: 0.8rem; opacity: 0.9; margin-top: 4px; }
+        .user-avatar { font-size: 56px; margin-bottom: 12px; cursor: pointer; }
+        .user-name { font-size: 1.2rem; font-weight: 700; }
+        .user-role { font-size: 0.75rem; opacity: 0.9; margin-top: 4px; }
         .sidebar-section { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; }
         .sidebar-title { font-weight: 600; margin-bottom: 12px; color: #374151; display: flex; justify-content: space-between; }
         .room-item, .user-item {
@@ -277,7 +305,7 @@ CHAT_TEMPLATE = '''
         }
         .create-room input { flex: 1; padding: 8px 12px; border: none; border-radius: 20px; outline: none; }
         .create-room button { background: #4f46e5; color: white; border: none; border-radius: 20px; padding: 8px 16px; cursor: pointer; }
-        .chat-main { flex: 1; display: flex; flex-direction: column; background: rgba(255,255,255,0.95); }
+        .chat-main { flex: 1; display: flex; flex-direction: column; background: white; }
         .chat-header {
             padding: 16px 24px;
             border-bottom: 1px solid #e5e7eb;
@@ -286,7 +314,7 @@ CHAT_TEMPLATE = '''
             align-items: center;
             background: white;
         }
-        .chat-room-name { font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+        .chat-room-name { font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; gap: 12px; }
         .messages-area {
             flex: 1;
             overflow-y: auto;
@@ -294,6 +322,7 @@ CHAT_TEMPLATE = '''
             display: flex;
             flex-direction: column;
             gap: 12px;
+            background: #f9fafb;
         }
         .message {
             display: flex;
@@ -305,27 +334,26 @@ CHAT_TEMPLATE = '''
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .message-own { justify-content: flex-end; }
         .message-avatar {
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             background: linear-gradient(135deg, #667eea, #764ba2);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 18px;
+            cursor: pointer;
         }
         .message-content {
-            background: #f3f4f6;
-            padding: 10px 16px;
-            border-radius: 20px;
+            background: white;
+            padding: 8px 14px;
+            border-radius: 18px;
             max-width: 60%;
-            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         .message-own .message-content {
             background: #4f46e5;
             color: white;
-            border-bottom-right-radius: 4px;
-            border-bottom-left-radius: 20px;
         }
         .message-header {
             display: flex;
@@ -334,15 +362,15 @@ CHAT_TEMPLATE = '''
             margin-bottom: 4px;
             flex-wrap: wrap;
         }
-        .message-name { font-weight: 700; font-size: 0.85rem; cursor: pointer; }
-        .message-time { font-size: 0.65rem; opacity: 0.7; }
-        .message-text { word-wrap: break-word; line-height: 1.4; }
+        .message-name { font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+        .message-time { font-size: 0.65rem; opacity: 0.6; }
+        .message-text { word-wrap: break-word; line-height: 1.4; font-size: 0.9rem; }
         .message-actions {
             position: absolute;
-            right: 10px;
+            right: 5px;
             top: 5px;
             display: flex;
-            gap: 5px;
+            gap: 4px;
             opacity: 0;
             transition: opacity 0.2s;
         }
@@ -351,19 +379,19 @@ CHAT_TEMPLATE = '''
             background: #374151;
             border: none;
             border-radius: 50%;
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
             color: white;
             cursor: pointer;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
         }
         .system-message {
             text-align: center;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: #6b7280;
-            padding: 8px;
-            background: #f9fafb;
-            border-radius: 20px;
+            padding: 6px;
+            background: #f3f4f6;
+            border-radius: 16px;
             margin: 4px 0;
         }
         .input-area {
@@ -375,16 +403,16 @@ CHAT_TEMPLATE = '''
         }
         .input-area input {
             flex: 1;
-            padding: 14px 20px;
+            padding: 12px 20px;
             border: 1px solid #e5e7eb;
-            border-radius: 40px;
+            border-radius: 30px;
             outline: none;
             font-size: 14px;
         }
         .input-area input:focus { border-color: #4f46e5; }
         .input-area button {
-            width: 48px;
-            height: 48px;
+            width: 44px;
+            height: 44px;
             background: #4f46e5;
             border: none;
             border-radius: 50%;
@@ -394,23 +422,24 @@ CHAT_TEMPLATE = '''
         }
         .input-area button:hover { transform: scale(1.05); }
         .typing-indicator {
-            padding: 8px 24px;
-            font-size: 0.75rem;
+            padding: 6px 24px;
+            font-size: 0.7rem;
             color: #6b7280;
             font-style: italic;
+            background: #f9fafb;
         }
-        .badge-owner { background: #ef4444; color: white; font-size: 10px; padding: 2px 8px; border-radius: 20px; margin-left: 6px; }
-        .badge-admin { background: #10b981; color: white; font-size: 10px; padding: 2px 8px; border-radius: 20px; margin-left: 6px; }
-        .badge-moder { background: #f59e0b; color: white; font-size: 10px; padding: 2px 8px; border-radius: 20px; margin-left: 6px; }
-        @media (max-width: 768px) { .sidebar { display: none; } .message-content { max-width: 85%; } }
+        .badge-owner { background: #ef4444; color: white; font-size: 9px; padding: 2px 6px; border-radius: 12px; margin-left: 6px; }
+        .badge-admin { background: #10b981; color: white; font-size: 9px; padding: 2px 6px; border-radius: 12px; margin-left: 6px; }
+        .badge-moder { background: #f59e0b; color: white; font-size: 9px; padding: 2px 6px; border-radius: 12px; margin-left: 6px; }
+        @media (max-width: 680px) { .sidebar { display: none; } .message-content { max-width: 85%; } }
     </style>
 </head>
 <body>
 <div class="app">
     <div class="sidebar">
         <div class="user-info">
-            <div class="user-avatar" id="avatarBtn">{{ avatar }}</div>
-            <div class="user-name">{{ username }}{% if role == 'owner' %}<span class="badge-owner">ВЛАДЕЛЕЦ</span>{% elif role == 'admin' %}<span class="badge-admin">ADMIN</span>{% elif role == 'moderator' %}<span class="badge-moder">MODER</span>{% endif %}</div>
+            <div class="user-avatar">{{ avatar }}</div>
+            <div class="user-name">{{ username }}{% if role == 'owner' %}<span class="badge-owner">ВЛАДЕЛЕЦ</span>{% elif role == 'admin' %}<span class="badge-admin">ADMIN</span>{% elif role == 'moderator' %}<span class="badge-moder">МОДЕР</span>{% endif %}</div>
             <div class="user-role">{{ role_display }}</div>
         </div>
         <div class="sidebar-section">
@@ -418,7 +447,7 @@ CHAT_TEMPLATE = '''
             <div id="roomsList"></div>
             {% if role in ['owner', 'admin'] %}
             <div class="create-room">
-                <input type="text" id="newRoomName" placeholder="Название комнаты">
+                <input type="text" id="newRoomName" placeholder="Название">
                 <button id="createRoomBtn">+</button>
             </div>
             {% endif %}
@@ -428,8 +457,9 @@ CHAT_TEMPLATE = '''
             <div id="usersList"></div>
         </div>
         <div class="sidebar-section">
-            <div class="sidebar-title"><i class="fas fa-cog"></i> Настройки</div>
-            <button id="themeToggleBtn" style="width:100%; padding:10px; background:#f3f4f6; border:none; border-radius:20px; cursor:pointer;">🌙 Тёмная тема</button>
+            <div class="sidebar-title"><i class="fas fa-palette"></i> Настройки</div>
+            <button id="themeBtn" style="width:100%; padding:10px; background:#e0e7ff; border:none; border-radius:20px; cursor:pointer; margin-bottom:8px;">🌙 Тёмная тема</button>
+            <button id="logoutBtn" style="width:100%; padding:10px; background:#fee2e2; border:none; border-radius:20px; cursor:pointer; color:#dc2626;">🚪 Выйти</button>
         </div>
     </div>
     <div class="chat-main">
@@ -441,11 +471,9 @@ CHAT_TEMPLATE = '''
         <div id="typingIndicator" class="typing-indicator"></div>
         <div class="input-area">
             <button id="emojiBtn"><i class="far fa-smile"></i></button>
-            <button id="imageBtn"><i class="fas fa-image"></i></button>
-            <input type="text" id="messageInput" placeholder="Сообщение...">
+            <input type="text" id="messageInput" placeholder="Напишите сообщение...">
             <button id="sendBtn"><i class="fas fa-paper-plane"></i></button>
         </div>
-        <input type="file" id="imageInput" accept="image/*" style="display:none">
     </div>
 </div>
 <script>
@@ -455,59 +483,40 @@ CHAT_TEMPLATE = '''
     let role = '{{ role }}';
     let typingTimeout = null;
     let typingUsers = {};
-    let currentTheme = 'light';
     
     const messagesDiv = document.getElementById('messages');
     const messageInput = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
     const typingIndicator = document.getElementById('typingIndicator');
     
-    function addMessage(id, name, text, time, isOwn, msgRole, avatar, isEdited, isPinned, replyTo) {
+    function addMessage(id, name, text, time, isOwn, msgRole, avatar, isEdited) {
         const div = document.createElement('div');
         div.className = `message ${isOwn ? 'message-own' : ''}`;
         div.dataset.id = id;
         let roleBadge = '';
         if(msgRole === 'owner') roleBadge = '<span class="badge-owner">ВЛ</span>';
         else if(msgRole === 'admin') roleBadge = '<span class="badge-admin">ADM</span>';
-        else if(msgRole === 'moderator') roleBadge = '<span class="badge-moder">MOD</span>';
-        let editMark = isEdited ? ' <i class="fas fa-pencil-alt" style="font-size:10px;"></i>' : '';
-        let pinMark = isPinned ? ' <i class="fas fa-thumbtack" style="font-size:10px;"></i>' : '';
+        else if(msgRole === 'moderator') roleBadge = '<span class="badge-moder">МОД</span>';
+        let editMark = isEdited ? ' <i class="fas fa-pencil-alt" style="font-size:9px;"></i>' : '';
         div.innerHTML = `
             <div class="message-avatar" onclick="startPrivateChat('${name}')">${avatar || '💬'}</div>
             <div class="message-content">
                 <div class="message-header">
                     <span class="message-name" onclick="startPrivateChat('${name}')">${escapeHtml(name)}${roleBadge}</span>
-                    <span class="message-time">${time}${editMark}${pinMark}</span>
+                    <span class="message-time">${time}${editMark}</span>
                 </div>
                 <div class="message-text">${escapeHtml(text)}</div>
             </div>
             <div class="message-actions">
                 ${!isOwn && (role === 'owner' || role === 'admin') ? `<button class="msg-action" onclick="deleteMessage('${id}')"><i class="fas fa-trash"></i></button>` : ''}
                 ${isOwn ? `<button class="msg-action" onclick="editMessage('${id}')"><i class="fas fa-edit"></i></button>` : ''}
-                ${(role === 'owner' || role === 'admin') ? `<button class="msg-action" onclick="pinMessage('${id}')"><i class="fas fa-thumbtack"></i></button>` : ''}
                 ${(!isOwn && role === 'owner') ? `<button class="msg-action" onclick="banUser('${name}')"><i class="fas fa-ban"></i></button>` : ''}
-                <button class="msg-action" onclick="replyToMessage('${id}', '${escapeHtml(name)}', '${escapeHtml(text.substring(0, 50))}')"><i class="fas fa-reply"></i></button>
+                <button class="msg-action" onclick="replyTo('${escapeHtml(name)}', '${escapeHtml(text.substring(0, 40))}')"><i class="fas fa-reply"></i></button>
             </div>
         `;
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
-    
-    window.replyToMessage = function(msgId, name, text) {
-        messageInput.value = `> @${name}: ${text}\n`;
-        messageInput.focus();
-    };
-    
-    window.editMessage = function(msgId) {
-        const newText = prompt('Редактировать сообщение:');
-        if(newText) {
-            socket.emit('edit_message', { messageId: msgId, room: currentRoom, new_text: newText });
-        }
-    };
-    
-    window.pinMessage = function(msgId) {
-        socket.emit('pin_message', { messageId: msgId, room: currentRoom });
-    };
     
     function addSystemMessage(text) {
         const div = document.createElement('div');
@@ -521,16 +530,17 @@ CHAT_TEMPLATE = '''
         return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
     }
     
-    window.deleteMessage = function(msgId) {
-        if(confirm('Удалить сообщение?')) {
-            socket.emit('delete_message', { messageId: msgId, room: currentRoom });
-        }
+    window.deleteMessage = function(id) {
+        if(confirm('Удалить сообщение?')) socket.emit('delete_message', { messageId: id, room: currentRoom });
+    };
+    
+    window.editMessage = function(id) {
+        const newText = prompt('Новый текст:');
+        if(newText) socket.emit('edit_message', { messageId: id, room: currentRoom, new_text: newText });
     };
     
     window.banUser = function(user) {
-        if(confirm(`Заблокировать пользователя ${user}?`)) {
-            socket.emit('ban_user', { username: user, room: currentRoom });
-        }
+        if(confirm(`Заблокировать ${user}?`)) socket.emit('ban_user', { username: user, room: currentRoom });
     };
     
     window.startPrivateChat = function(user) {
@@ -539,6 +549,11 @@ CHAT_TEMPLATE = '''
             socket.emit('private_message', { target: user, text: msg });
             addSystemMessage(`✉️ Личное сообщение для ${user}: ${msg}`);
         }
+    };
+    
+    window.replyTo = function(name, text) {
+        messageInput.value = `@${name}: `;
+        messageInput.focus();
     };
     
     function updateTypingIndicator() {
@@ -551,21 +566,24 @@ CHAT_TEMPLATE = '''
     
     socket.on('history', (history) => {
         messagesDiv.innerHTML = '';
-        history.forEach(msg => addMessage(msg.id, msg.name, msg.text, msg.time, msg.name === username, msg.role, msg.avatar, msg.edited, msg.pinned));
+        history.forEach(msg => addMessage(msg.id, msg.name, msg.text, msg.time, msg.name === username, msg.role, msg.avatar, msg.edited));
     });
     
     socket.on('message', (msg) => {
-        addMessage(msg.id, msg.name, msg.text, msg.time, msg.name === username, msg.role, msg.avatar, msg.edited, msg.pinned);
-        if(msg.mentions && msg.mentions.includes(username) && !msg.name === username) {
-            addSystemMessage(`🔔 Вас упомянули: ${msg.name}`);
+        addMessage(msg.id, msg.name, msg.text, msg.time, msg.name === username, msg.role, msg.avatar, msg.edited);
+        if(msg.name !== username && role === 'user' && !document.hasFocus()) {
+            document.title = '🔔 Новое сообщение!';
+            setTimeout(() => { if(document.title === '🔔 Новое сообщение!') document.title = 'Чатик'; }, 3000);
         }
     });
     
     socket.on('message_update', (data) => {
-        document.querySelectorAll(`.message[data-id="${data.id}"]`).forEach(el => el.remove());
+        const el = document.querySelector(`.message[data-id="${data.id}"] .message-text`);
+        if(el) el.innerHTML = escapeHtml(data.new_text) + ' <i class="fas fa-pencil-alt" style="font-size:9px;"></i>';
     });
     
     socket.on('system', addSystemMessage);
+    
     socket.on('typing', (data) => {
         if(data.typing) typingUsers[data.name] = true;
         else delete typingUsers[data.name];
@@ -574,7 +592,7 @@ CHAT_TEMPLATE = '''
     
     socket.on('rooms_list', (roomsData) => {
         const container = document.getElementById('roomsList');
-        container.innerHTML = roomsData.map(r => `<div class="room-item ${r === currentRoom ? 'active' : ''}" data-room="${r}">🏠 ${escapeHtml(r)}</div>`).join('');
+        container.innerHTML = roomsData.map(r => `<div class="room-item ${r === currentRoom ? 'active' : ''}" data-room="${r}">📌 ${escapeHtml(r)}</div>`).join('');
         document.querySelectorAll('.room-item').forEach(el => {
             el.onclick = () => {
                 const newRoom = el.dataset.room;
@@ -591,11 +609,11 @@ CHAT_TEMPLATE = '''
     
     socket.on('users_list', (usersData) => {
         const container = document.getElementById('usersList');
-        container.innerHTML = usersData.map(u => `<div class="user-item" onclick="startPrivateChat('${escapeHtml(u.name)}')"><span>${u.avatar || '👤'} ${escapeHtml(u.name)}</span> ${u.role === 'owner' ? '<span class="badge-owner">ВЛ</span>' : (u.role === 'admin' ? '<span class="badge-admin">ADM</span>' : (u.role === 'moderator' ? '<span class="badge-moder">MOD</span>' : ''))}</div>`).join('');
+        container.innerHTML = usersData.map(u => `<div class="user-item" onclick="startPrivateChat('${escapeHtml(u.name)}')"><span>${u.avatar || '👤'} ${escapeHtml(u.name)}</span> ${u.role === 'owner' ? '<span class="badge-owner">ВЛ</span>' : (u.role === 'admin' ? '<span class="badge-admin">ADM</span>' : (u.role === 'moderator' ? '<span class="badge-moder">МОД</span>' : ''))}</div>`).join('');
     });
     
     socket.on('banned', () => {
-        alert('Вы были заблокированы!');
+        alert('Вы заблокированы!');
         window.location.href = '/logout';
     });
     
@@ -622,11 +640,11 @@ CHAT_TEMPLATE = '''
     });
     
     document.getElementById('searchBtn')?.addEventListener('click', () => {
-        const query = prompt('Поиск сообщений:');
+        const query = prompt('Поиск:');
         if(query) {
-            const messages = document.querySelectorAll('.message-text');
+            const msgs = document.querySelectorAll('.message-text');
             let found = false;
-            messages.forEach(msg => {
+            msgs.forEach(msg => {
                 if(msg.textContent.toLowerCase().includes(query.toLowerCase())) {
                     msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     msg.style.background = '#fef3c7';
@@ -636,22 +654,6 @@ CHAT_TEMPLATE = '''
             });
             if(!found) alert('Ничего не найдено');
         }
-    });
-    
-    document.getElementById('imageBtn')?.addEventListener('click', () => {
-        document.getElementById('imageInput').click();
-    });
-    
-    document.getElementById('imageInput')?.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if(file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                socket.emit('image_message', { room: currentRoom, image: ev.target.result });
-            };
-            reader.readAsDataURL(file);
-        }
-        e.target.value = '';
     });
     
     document.getElementById('emojiBtn')?.addEventListener('click', () => {
@@ -684,16 +686,19 @@ CHAT_TEMPLATE = '''
         setTimeout(() => picker.remove(), 5000);
     });
     
-    document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
-        currentTheme = currentTheme === 'light' ? 'dark' : 'light';
-        document.body.style.background = currentTheme === 'dark' ? '#1e1b4b' : 'linear-gradient(135deg, #1e1b4b 0%, #4c1d95 50%, #7e22ce 100%)';
-        document.querySelector('.chat-main').style.background = currentTheme === 'dark' ? '#1f2937' : 'rgba(255,255,255,0.95)';
-        fetch('/save_settings', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({theme: currentTheme})
-        });
+    let dark = false;
+    document.getElementById('themeBtn')?.addEventListener('click', () => {
+        dark = !dark;
+        document.querySelector('.chat-main').style.background = dark ? '#1f2937' : 'white';
+        document.querySelector('.messages-area').style.background = dark ? '#111827' : '#f9fafb';
+        document.querySelector('.sidebar').style.background = dark ? '#1f2937' : 'rgba(255,255,255,0.98)';
+        document.querySelector('.sidebar').style.color = dark ? 'white' : 'black';
+        document.querySelector('.chat-header').style.background = dark ? '#1f2937' : 'white';
+        document.querySelector('.chat-header').style.color = dark ? 'white' : 'black';
+        document.querySelector('.input-area').style.background = dark ? '#1f2937' : 'white';
     });
+    
+    document.getElementById('logoutBtn')?.addEventListener('click', () => window.location.href = '/logout');
     
     socket.emit('get_rooms');
     socket.emit('get_users');
@@ -702,7 +707,7 @@ CHAT_TEMPLATE = '''
 </html>
 '''
 
-# Маршруты Flask
+# ==================== МАРШРУТЫ ====================
 @app.route('/')
 def index():
     if 'username' not in session:
@@ -712,11 +717,11 @@ def index():
         session.clear()
         return redirect(url_for('login'))
     role_display = {'owner': 'Владелец', 'admin': 'Администратор', 'moderator': 'Модератор', 'user': 'Пользователь'}.get(user['role'], 'Пользователь')
-    return render_template_string(CHAT_TEMPLATE, 
+    return render_template_string(CHAT_PAGE, 
                                  username=session['username'],
                                  role=user['role'],
                                  role_display=role_display,
-                                 avatar=user.get('avatar', '💬'))
+                                 avatar=user.get('avatar', '👤'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -726,11 +731,11 @@ def login():
         hashed = hashlib.sha256(password.encode()).hexdigest()
         if username in users and users[username]['password'] == hashed:
             if users[username].get('banned'):
-                return render_template_string(LOGIN_TEMPLATE, error='Вы заблокированы')
+                return render_template_string(LOGIN_PAGE, error='Вы заблокированы')
             session['username'] = username
             return redirect(url_for('index'))
-        return render_template_string(LOGIN_TEMPLATE, error='Неверное имя или пароль')
-    return render_template_string(LOGIN_TEMPLATE, error=None)
+        return render_template_string(LOGIN_PAGE, error='Неверное имя или пароль')
+    return render_template_string(LOGIN_PAGE, error=None)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -738,23 +743,40 @@ def register():
         username = request.form['username']
         password = request.form['password']
         if username in users:
-            return render_template_string(REGISTER_TEMPLATE, error='Пользователь уже существует')
+            return render_template_string(REGISTER_PAGE, error='Пользователь уже существует')
         if len(username) < 3 or len(username) > 20:
-            return render_template_string(REGISTER_TEMPLATE, error='Имя должно быть от 3 до 20 символов')
+            return render_template_string(REGISTER_PAGE, error='Имя от 3 до 20 символов')
         if len(password) < 4:
-            return render_template_string(REGISTER_TEMPLATE, error='Пароль должен быть минимум 4 символа')
+            return render_template_string(REGISTER_PAGE, error='Пароль минимум 4 символа')
         users[username] = {
             'password': hashlib.sha256(password.encode()).hexdigest(),
             'role': 'user',
             'avatar': '👤',
-            'banned': False,
-            'created_at': datetime.now().isoformat()
+            'banned': False
         }
         save_users(users)
         return redirect(url_for('login'))
-    return render_template_string(REGISTER_TEMPLATE, error=None)
+    return render_template_string(REGISTER_PAGE, error=None)
 
 @app.route('/logout')
 def logout():
     session.clear()
-    return redirect
+    return redirect(url_for('login'))
+
+# ==================== SOCKETIO СОБЫТИЯ ====================
+@socketio.on('join')
+def handle_join(data):
+    username = session.get('username')
+    if not username or users.get(username, {}).get('banned'):
+        return
+    room = data['room']
+    join_room(room)
+    emit('history', messages.get(room, []), to=request.sid)
+
+@socketio.on('message')
+def handle_message(data):
+    username = session.get('username')
+    if not username or users.get(username, {}).get('banned'):
+        return
+    room = data['room']
+    text = data
