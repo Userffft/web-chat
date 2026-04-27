@@ -1,43 +1,65 @@
-from flask import Flask, render_template_string, request, session, redirect, url_for
+from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
 import os
 import json
+import hashlib
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey123'
+app.secret_key = 'chatic-super-secret-key-2024'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# Файлы для хранения данных
 USERS_FILE = 'users.json'
 MESSAGES_FILE = 'messages.json'
+ROOMS_FILE = 'rooms.json'
 
-# Загрузка пользователей
+# Функции для работы с данными
 def load_users():
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r') as f:
             return json.load(f)
-    return {'admin': {'password': 'admin123', 'role': 'admin'}}
+    # При первом запуске создаём владельца MrAizex
+    return {
+        'MrAizex': {
+            'password': hashlib.sha256('admin123'.encode()).hexdigest(),
+            'role': 'owner',
+            'avatar': '👑',
+            'banned': False,
+            'created_at': datetime.now().isoformat()
+        }
+    }
 
 def save_users(users):
     with open(USERS_FILE, 'w') as f:
         json.dump(users, f)
 
-# Загрузка сообщений
 def load_messages():
     if os.path.exists(MESSAGES_FILE):
         with open(MESSAGES_FILE, 'r') as f:
             return json.load(f)
-    return {'Общая': [], 'Случайная': [], 'Помощь': []}
+    return {'Общая': []}
 
 def save_messages(messages):
     with open(MESSAGES_FILE, 'w') as f:
         json.dump(messages, f)
 
-users = load_users()
-history = load_messages()
+def load_rooms():
+    if os.path.exists(ROOMS_FILE):
+        with open(ROOMS_FILE, 'r') as f:
+            return json.load(f)
+    return ['Общая', 'Случайная', 'Помощь']
 
-# HTML шаблон прямо в коде
-LOGIN_PAGE = '''
+def save_rooms(rooms):
+    with open(ROOMS_FILE, 'w') as f:
+        json.dump(rooms, f)
+
+users = load_users()
+messages = load_messages()
+rooms = load_rooms()
+
+# HTML шаблоны
+LOGIN_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -49,7 +71,7 @@ LOGIN_PAGE = '''
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 50%, #7e22ce 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -57,49 +79,61 @@ LOGIN_PAGE = '''
             padding: 20px;
         }
         .card {
-            background: white;
-            border-radius: 32px;
-            padding: 40px;
-            max-width: 400px;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 48px;
+            padding: 48px;
+            max-width: 440px;
             width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.2);
         }
         h1 {
             text-align: center;
-            margin-bottom: 32px;
+            margin-bottom: 8px;
+            font-size: 2.5rem;
             background: linear-gradient(135deg, #667eea, #764ba2);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
+        .subtitle {
+            text-align: center;
+            color: #6b7280;
+            margin-bottom: 32px;
+        }
         input {
             width: 100%;
-            padding: 14px 16px;
+            padding: 16px 20px;
             border: 2px solid #e5e7eb;
-            border-radius: 24px;
+            border-radius: 32px;
             margin-bottom: 16px;
             font-size: 16px;
             outline: none;
+            transition: all 0.2s;
         }
         input:focus {
             border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
         }
         button {
             width: 100%;
-            padding: 14px;
+            padding: 16px;
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             border: none;
-            border-radius: 24px;
+            border-radius: 32px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
+            transition: transform 0.2s;
         }
+        button:hover { transform: translateY(-2px); }
         .error {
             background: #fee2e2;
             color: #dc2626;
-            padding: 10px;
-            border-radius: 16px;
-            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 24px;
+            margin-bottom: 20px;
             text-align: center;
         }
         .footer {
@@ -107,12 +141,13 @@ LOGIN_PAGE = '''
             margin-top: 24px;
             color: #6b7280;
         }
-        a { color: #667eea; text-decoration: none; }
+        a { color: #667eea; text-decoration: none; font-weight: 500; }
     </style>
 </head>
 <body>
     <div class="card">
         <h1>💬 Чатик</h1>
+        <div class="subtitle">Общайся с друзьями</div>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form method="post">
             <input type="text" name="username" placeholder="Имя пользователя" required autofocus>
@@ -127,7 +162,7 @@ LOGIN_PAGE = '''
 </html>
 '''
 
-REGISTER_PAGE = '''
+REGISTER_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -139,7 +174,7 @@ REGISTER_PAGE = '''
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 50%, #7e22ce 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -147,49 +182,50 @@ REGISTER_PAGE = '''
             padding: 20px;
         }
         .card {
-            background: white;
-            border-radius: 32px;
-            padding: 40px;
-            max-width: 400px;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 48px;
+            padding: 48px;
+            max-width: 440px;
             width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
         }
         h1 {
             text-align: center;
             margin-bottom: 32px;
+            font-size: 2rem;
             background: linear-gradient(135deg, #667eea, #764ba2);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         input {
             width: 100%;
-            padding: 14px 16px;
+            padding: 16px 20px;
             border: 2px solid #e5e7eb;
-            border-radius: 24px;
+            border-radius: 32px;
             margin-bottom: 16px;
             font-size: 16px;
             outline: none;
         }
-        input:focus {
-            border-color: #667eea;
-        }
+        input:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
         button {
             width: 100%;
-            padding: 14px;
+            padding: 16px;
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             border: none;
-            border-radius: 24px;
+            border-radius: 32px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
         }
+        button:hover { transform: translateY(-2px); }
         .error {
             background: #fee2e2;
             color: #dc2626;
-            padding: 10px;
-            border-radius: 16px;
-            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 24px;
+            margin-bottom: 20px;
             text-align: center;
         }
         .footer {
@@ -197,15 +233,15 @@ REGISTER_PAGE = '''
             margin-top: 24px;
             color: #6b7280;
         }
-        a { color: #667eea; text-decoration: none; }
+        a { color: #667eea; text-decoration: none; font-weight: 500; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>📝 Регистрация</h1>
+        <h1>📝 Создать аккаунт</h1>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form method="post">
-            <input type="text" name="username" placeholder="Имя (мин. 3 символа)" required autofocus>
+            <input type="text" name="username" placeholder="Имя (от 3 до 20 символов)" required autofocus>
             <input type="password" name="password" placeholder="Пароль (мин. 4 символа)" required>
             <button type="submit">Зарегистрироваться</button>
         </form>
@@ -217,13 +253,13 @@ REGISTER_PAGE = '''
 </html>
 '''
 
-CHAT_PAGE = '''
+CHAT_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Чатик</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Чатик · {{ username }}</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
@@ -231,75 +267,123 @@ CHAT_PAGE = '''
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .chat-container { max-width: 1200px; margin: 0 auto; }
-        .chat-card {
-            background: white;
-            border-radius: 32px;
+            background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 50%, #7e22ce 100%);
+            height: 100vh;
             overflow: hidden;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
         }
-        .header {
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
-            padding: 20px 24px;
-            color: white;
+        .app {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            height: 100vh;
         }
-        .main { display: flex; height: 550px; }
+        /* Sidebar */
         .sidebar {
-            width: 260px;
-            background: #f9fafb;
-            border-right: 1px solid #e5e7eb;
-            padding: 16px;
+            width: 300px;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
             overflow-y: auto;
+        }
+        .user-info {
+            padding: 24px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            text-align: center;
+        }
+        .user-avatar {
+            font-size: 64px;
+            margin-bottom: 12px;
+        }
+        .user-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        .user-role {
+            font-size: 0.8rem;
+            opacity: 0.9;
+            margin-top: 4px;
+        }
+        .online-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #10b981;
+            border-radius: 50%;
+            margin-left: 8px;
+        }
+        .sidebar-section {
+            padding: 16px 20px;
+            border-bottom: 1px solid #e5e7eb;
         }
         .sidebar-title {
             font-weight: 600;
             margin-bottom: 12px;
             color: #374151;
+            display: flex;
+            justify-content: space-between;
         }
-        .user-item {
+        .room-item, .user-item {
+            padding: 10px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 4px;
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+        .room-item:hover, .user-item:hover { background: #f3f4f6; }
+        .room-item.active { background: #e0e7ff; color: #4f46e5; font-weight: 500; }
+        .create-room {
+            margin-top: 12px;
             padding: 8px;
-            border-radius: 8px;
-            margin-bottom: 4px;
-        }
-        .admin-badge {
-            background: #ef4444;
-            color: white;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 10px;
-        }
-        .chat-area { flex: 1; display: flex; flex-direction: column; }
-        .rooms {
+            background: #f3f4f6;
+            border-radius: 24px;
             display: flex;
-            gap: 4px;
-            padding: 12px 16px;
-            border-bottom: 1px solid #e5e7eb;
+            gap: 8px;
         }
-        .room-btn {
-            padding: 8px 20px;
-            border-radius: 20px;
-            background: transparent;
+        .create-room input {
+            flex: 1;
+            padding: 8px 12px;
             border: none;
-            cursor: pointer;
+            border-radius: 20px;
+            outline: none;
         }
-        .room-btn.active {
+        .create-room button {
             background: #4f46e5;
             color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 16px;
+            cursor: pointer;
         }
-        .messages {
+        /* Main chat */
+        .chat-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255,255,255,0.95);
+        }
+        .chat-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+        }
+        .chat-room-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .messages-area {
             flex: 1;
             overflow-y: auto;
-            padding: 16px;
+            padding: 20px;
             display: flex;
             flex-direction: column;
             gap: 12px;
@@ -308,206 +392,379 @@ CHAT_PAGE = '''
             display: flex;
             gap: 12px;
             align-items: flex-start;
+            animation: fadeIn 0.2s ease;
         }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .message-own { justify-content: flex-end; }
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
         .message-content {
             background: #f3f4f6;
-            padding: 10px 14px;
-            border-radius: 18px;
-            max-width: 65%;
+            padding: 10px 16px;
+            border-radius: 20px;
+            max-width: 60%;
+            border-bottom-left-radius: 4px;
         }
         .message-own .message-content {
             background: #4f46e5;
             color: white;
+            border-bottom-right-radius: 4px;
+            border-bottom-left-radius: 20px;
+        }
+        .message-header {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 4px;
+            flex-wrap: wrap;
         }
         .message-name {
-            font-weight: 600;
-            font-size: 13px;
+            font-weight: 700;
+            font-size: 0.85rem;
             cursor: pointer;
         }
         .message-time {
-            font-size: 10px;
+            font-size: 0.65rem;
             opacity: 0.7;
-            margin-left: 8px;
         }
-        .message-text { margin-top: 4px; word-wrap: break-word; }
-        .delete-btn {
+        .message-text {
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+        .message-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 6px;
+        }
+        .msg-action {
             background: none;
             border: none;
-            color: #ef4444;
+            font-size: 0.7rem;
             cursor: pointer;
-            margin-left: 8px;
+            opacity: 0.6;
+            padding: 2px 6px;
+            border-radius: 12px;
         }
+        .msg-action:hover { opacity: 1; background: rgba(0,0,0,0.1); }
         .system-message {
             text-align: center;
-            font-size: 12px;
+            font-size: 0.75rem;
             color: #6b7280;
-            padding: 4px;
+            padding: 8px;
+            background: #f9fafb;
+            border-radius: 20px;
+            margin: 4px 0;
         }
         .input-area {
+            padding: 16px 24px;
+            border-top: 1px solid #e5e7eb;
             display: flex;
             gap: 12px;
-            padding: 16px;
-            border-top: 1px solid #e5e7eb;
+            background: white;
         }
         .input-area input {
             flex: 1;
-            padding: 12px 18px;
+            padding: 14px 20px;
             border: 1px solid #e5e7eb;
-            border-radius: 30px;
+            border-radius: 40px;
             outline: none;
+            font-size: 14px;
         }
+        .input-area input:focus { border-color: #4f46e5; }
         .input-area button {
+            width: 48px;
+            height: 48px;
             background: #4f46e5;
             border: none;
             border-radius: 50%;
-            width: 48px;
-            height: 48px;
             color: white;
             cursor: pointer;
+            transition: transform 0.2s;
         }
-        @media (max-width: 768px) { .sidebar { display: none; } }
+        .input-area button:hover { transform: scale(1.05); }
+        .typing-indicator {
+            padding: 8px 24px;
+            font-size: 0.75rem;
+            color: #6b7280;
+            font-style: italic;
+        }
+        .badge-owner { background: #ef4444; color: white; font-size: 10px; padding: 2px 8px; border-radius: 20px; margin-left: 6px; }
+        .badge-admin { background: #10b981; color: white; font-size: 10px; padding: 2px 8px; border-radius: 20px; margin-left: 6px; }
+        .badge-moder { background: #f59e0b; color: white; font-size: 10px; padding: 2px 8px; border-radius: 20px; margin-left: 6px; }
+        @media (max-width: 768px) { .sidebar { display: none; } .message-content { max-width: 85%; } }
     </style>
 </head>
 <body>
-<div class="chat-container">
-    <div class="chat-card">
-        <div class="header">
-            <h2>💬 Чатик</h2>
-            <div>{{ username }} ({{ role }}) <a href="/logout" style="color:white; margin-left:16px;">Выйти</a></div>
+<div class="app">
+    <div class="sidebar">
+        <div class="user-info">
+            <div class="user-avatar">{{ avatar }}</div>
+            <div class="user-name">{{ username }}{% if role == 'owner' %}<span class="badge-owner">ВЛАДЕЛЕЦ</span>{% elif role == 'admin' %}<span class="badge-admin">ADMIN</span>{% elif role == 'moderator' %}<span class="badge-moder">MODER</span>{% endif %}</div>
+            <div class="user-role">{{ role_display }}</div>
         </div>
-        <div class="main">
-            <div class="sidebar">
-                <div class="sidebar-title">👥 Пользователи</div>
-                <div id="usersList"></div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-title"><i class="fas fa-door-open"></i> Комнаты</div>
+            <div id="roomsList"></div>
+            {% if role in ['owner', 'admin'] %}
+            <div class="create-room">
+                <input type="text" id="newRoomName" placeholder="Название комнаты">
+                <button id="createRoomBtn">+</button>
             </div>
-            <div class="chat-area">
-                <div class="rooms" id="rooms">
-                    <button class="room-btn active" data-room="Общая">🏠 Общая</button>
-                    <button class="room-btn" data-room="Случайная">🎲 Случайная</button>
-                    <button class="room-btn" data-room="Помощь">🆘 Помощь</button>
-                </div>
-                <div id="messages" class="messages"></div>
-                <div class="input-area">
-                    <input type="text" id="messageInput" placeholder="Сообщение...">
-                    <button id="sendBtn">📤</button>
-                </div>
-            </div>
+            {% endif %}
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-title"><i class="fas fa-users"></i> Пользователи</div>
+            <div id="usersList"></div>
+        </div>
+    </div>
+    
+    <div class="chat-main">
+        <div class="chat-header">
+            <div class="chat-room-name"><i class="fas fa-hashtag"></i> <span id="currentRoomSpan">Общая</span></div>
+            <div><i class="fas fa-search" id="searchBtn" style="cursor: pointer;"></i></div>
+        </div>
+        
+        <div id="messages" class="messages-area"></div>
+        <div id="typingIndicator" class="typing-indicator"></div>
+        
+        <div class="input-area">
+            <button id="emojiBtn"><i class="far fa-smile"></i></button>
+            <input type="text" id="messageInput" placeholder="Сообщение...">
+            <button id="sendBtn"><i class="fas fa-paper-plane"></i></button>
         </div>
     </div>
 </div>
+
 <script>
     let socket = null;
     let currentRoom = 'Общая';
     let username = '{{ username }}';
     let role = '{{ role }}';
+    let typingTimeout = null;
+    let typingUsers = {};
     
-    const sendBtn = document.getElementById('sendBtn');
-    const messageInput = document.getElementById('messageInput');
     const messagesDiv = document.getElementById('messages');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const typingIndicator = document.getElementById('typingIndicator');
     
-    function addMessage(name, text, time, isOwn, msgRole) {
+    function addMessage(id, name, text, time, isOwn, msgRole, avatar = '💬') {
         const div = document.createElement('div');
         div.className = `message ${isOwn ? 'message-own' : ''}`;
-        let badge = msgRole === 'admin' ? ' <span class="admin-badge">ADMIN</span>' : '';
+        div.dataset.id = id;
+        let roleBadge = '';
+        if(msgRole === 'owner') roleBadge = '<span class="badge-owner">ВЛ</span>';
+        else if(msgRole === 'admin') roleBadge = '<span class="badge-admin">ADM</span>';
+        else if(msgRole === 'moderator') roleBadge = '<span class="badge-moder">MOD</span>';
         div.innerHTML = `
+            <div class="message-avatar">${avatar}</div>
             <div class="message-content">
-                <div class="message-name">${escapeHtml(name)}${badge}</div>
+                <div class="message-header">
+                    <span class="message-name">${escapeHtml(name)}${roleBadge}</span>
+                    <span class="message-time">${time}</span>
+                </div>
                 <div class="message-text">${escapeHtml(text)}</div>
-                <div class="message-time">${time}</div>
+                ${(role === 'owner' || role === 'admin' || (role === 'moderator' && !isOwn) || isOwn) ? 
+                    `<div class="message-actions">
+                        ${(role === 'owner' || role === 'admin' || (role === 'moderator' && !isOwn) || isOwn) ? `<button class="msg-action" onclick="deleteMessage('${id}')"><i class="fas fa-trash"></i></button>` : ''}
+                        ${(!isOwn && role === 'owner') ? `<button class="msg-action" onclick="banUser('${name}')"><i class="fas fa-ban"></i></button>` : ''}
+                    </div>` : ''}
             </div>
-            ${!isOwn && role === 'admin' ? `<button class="delete-btn" onclick="deleteMsg('${name}', '${text}')">🗑</button>` : ''}
         `;
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
-    
-    window.deleteMsg = function(name, text) {
-        if(confirm('Удалить сообщение?')) {
-            socket.emit('delete_message', { room: currentRoom, name: name, text: text });
-        }
-    };
     
     function addSystemMessage(text) {
         const div = document.createElement('div');
         div.className = 'system-message';
         div.textContent = text;
         messagesDiv.appendChild(div);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
     
     function escapeHtml(str) {
-        return str.replace(/[&<>]/g, function(m) {
-            if(m === '&') return '&amp;';
-            if(m === '<') return '&lt;';
-            if(m === '>') return '&gt;';
-            return m;
-        });
+        return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
+    }
+    
+    window.deleteMessage = function(msgId) {
+        if(confirm('Удалить сообщение?')) {
+            socket.emit('delete_message', { messageId: msgId, room: currentRoom });
+        }
+    };
+    
+    window.banUser = function(user) {
+        if(confirm(`Заблокировать пользователя ${user}?`)) {
+            socket.emit('ban_user', { username: user });
+        }
+    };
+    
+    function updateTypingIndicator() {
+        const names = Object.keys(typingUsers).filter(n => n !== username);
+        typingIndicator.textContent = names.length ? (names.length === 1 ? `${names[0]} печатает...` : `${names.length} человек печатают...`) : '';
     }
     
     socket = io();
-    socket.emit('join', { name: username, room: currentRoom });
+    socket.emit('join', { room: currentRoom });
     
     socket.on('history', (history) => {
         messagesDiv.innerHTML = '';
-        history.forEach(msg => addMessage(msg.name, msg.text, msg.time, msg.name === username, msg.role));
+        history.forEach(msg => addMessage(msg.id, msg.name, msg.text, msg.time, msg.name === username, msg.role, msg.avatar));
     });
     
     socket.on('message', (msg) => {
-        addMessage(msg.name, msg.text, msg.time, msg.name === username, msg.role);
+        addMessage(msg.id, msg.name, msg.text, msg.time, msg.name === username, msg.role, msg.avatar);
     });
     
     socket.on('system', addSystemMessage);
-    socket.on('users_list', (users) => {
+    socket.on('typing', (data) => {
+        if(data.typing) typingUsers[data.name] = true;
+        else delete typingUsers[data.name];
+        updateTypingIndicator();
+    });
+    
+    socket.on('rooms_list', (roomsData) => {
+        const container = document.getElementById('roomsList');
+        container.innerHTML = roomsData.map(r => `<div class="room-item ${r === currentRoom ? 'active' : ''}" data-room="${r}">🏠 ${r}</div>`).join('');
+        document.querySelectorAll('.room-item').forEach(el => {
+            el.onclick = () => {
+                const newRoom = el.dataset.room;
+                if(newRoom === currentRoom) return;
+                socket.emit('switch_room', { old_room: currentRoom, new_room: newRoom });
+                currentRoom = newRoom;
+                document.getElementById('currentRoomSpan').textContent = currentRoom;
+                document.querySelectorAll('.room-item').forEach(i => i.classList.remove('active'));
+                el.classList.add('active');
+                messagesDiv.innerHTML = '<div class="system-message">⏳ Загрузка...</div>';
+            };
+        });
+    });
+    
+    socket.on('users_list', (usersData) => {
         const container = document.getElementById('usersList');
-        container.innerHTML = users.map(u => `<div class="user-item">${escapeHtml(u.name)} ${u.role === 'admin' ? '<span class="admin-badge">ADMIN</span>' : ''}</div>`).join('');
+        container.innerHTML = usersData.map(u => `<div class="user-item"><span>${u.avatar || '👤'} ${escapeHtml(u.name)}</span> ${u.role === 'owner' ? '<span class="badge-owner">ВЛ</span>' : (u.role === 'admin' ? '<span class="badge-admin">ADM</span>' : (u.role === 'moderator' ? '<span class="badge-moder">MOD</span>' : ''))}</div>`).join('');
+    });
+    
+    socket.on('banned', () => {
+        alert('Вы были заблокированы!');
+        window.location.href = '/logout';
     });
     
     sendBtn.onclick = () => {
         if(messageInput.value.trim()) {
-            socket.emit('message', { name: username, text: messageInput.value, room: currentRoom });
+            socket.emit('message', { text: messageInput.value, room: currentRoom });
             messageInput.value = '';
         }
     };
     
-    messageInput.addEventListener('keypress', (e) => {
+    messageInput.onkeypress = (e) => {
         if(e.key === 'Enter') sendBtn.click();
+        socket.emit('typing', { room: currentRoom, typing: true });
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => socket.emit('typing', { room: currentRoom, typing: false }), 1000);
+    };
+    
+    document.getElementById('createRoomBtn')?.addEventListener('click', () => {
+        const newRoom = document.getElementById('newRoomName').value.trim();
+        if(newRoom) {
+            socket.emit('create_room', { room: newRoom });
+            document.getElementById('newRoomName').value = '';
+        }
     });
     
-    document.querySelectorAll('.room-btn').forEach(btn => {
-        btn.onclick = () => {
-            const newRoom = btn.dataset.room;
-            if(newRoom === currentRoom) return;
-            socket.emit('switch_room', { name: username, old_room: currentRoom, new_room: newRoom });
-            currentRoom = newRoom;
-            document.querySelectorAll('.room-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            messagesDiv.innerHTML = '<div class="system-message">⏳ Загрузка...</div>';
-        };
+    document.getElementById('searchBtn')?.addEventListener('click', () => {
+        const query = prompt('Поиск сообщений:');
+        if(query) {
+            const messages = document.querySelectorAll('.message-text');
+            let found = false;
+            messages.forEach(msg => {
+                if(msg.textContent.toLowerCase().includes(query.toLowerCase())) {
+                    msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    msg.style.background = '#fef3c7';
+                    setTimeout(() => msg.style.background = '', 2000);
+                    found = true;
+                }
+            });
+            if(!found) alert('Ничего не найдено');
+        }
     });
     
+    document.getElementById('emojiBtn')?.addEventListener('click', () => {
+        const emojis = ['😀','😂','❤️','👍','🎉','🔥','😍','🥹','😭','🤔','👋','🙏','✨','💯','😎','🥳'];
+        const picker = document.createElement('div');
+        picker.style.position = 'fixed';
+        picker.style.bottom = '80px';
+        picker.style.left = '20px';
+        picker.style.background = 'white';
+        picker.style.borderRadius = '16px';
+        picker.style.padding = '12px';
+        picker.style.display = 'grid';
+        picker.style.gridTemplateColumns = 'repeat(6, 1fr)';
+        picker.style.gap = '8px';
+        picker.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+        picker.style.zIndex = '1000';
+        emojis.forEach(emoji => {
+            const span = document.createElement('span');
+            span.textContent = emoji;
+            span.style.fontSize = '24px';
+            span.style.cursor = 'pointer';
+            span.onclick = () => {
+                messageInput.value += emoji;
+                messageInput.focus();
+                picker.remove();
+            };
+            picker.appendChild(span);
+        });
+        document.body.appendChild(picker);
+        setTimeout(() => picker.remove(), 5000);
+    });
+    
+    socket.emit('get_rooms');
     socket.emit('get_users');
 </script>
 </body>
 </html>
 '''
 
+# Маршруты Flask
 @app.route('/')
 def index():
     if 'username' not in session:
         return redirect(url_for('login'))
-    return render_template_string(CHAT_PAGE, username=session['username'], role=session.get('role', 'user'))
+    user = users.get(session['username'])
+    if not user or user.get('banned'):
+        session.clear()
+        return redirect(url_for('login'))
+    role_display = {'owner': 'Владелец', 'admin': 'Администратор', 'moderator': 'Модератор', 'user': 'Пользователь'}.get(user['role'], 'Пользователь')
+    return render_template_string(CHAT_TEMPLATE, 
+                                 username=session['username'],
+                                 role=user['role'],
+                                 role_display=role_display,
+                                 avatar=user.get('avatar', '💬'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if username in users and users[username]['password'] == password:
+        hashed = hashlib.sha256(password.encode()).hexdigest()
+        if username in users and users[username]['password'] == hashed:
+            if users[username].get('banned'):
+                return render_template_string(LOGIN_TEMPLATE, error='Вы заблокированы')
             session['username'] = username
-            session['role'] = users[username]['role']
             return redirect(url_for('index'))
-        return render_template_string(LOGIN_PAGE, error='Неверное имя или пароль')
-    return render_template_string(LOGIN_PAGE, error=None)
+        return render_template_string(LOGIN_TEMPLATE, error='Неверное имя или пароль')
+    return render_template_string(LOGIN_TEMPLATE, error=None)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -515,65 +772,102 @@ def register():
         username = request.form['username']
         password = request.form['password']
         if username in users:
-            return render_template_string(REGISTER_PAGE, error='Пользователь уже существует')
-        if len(username) < 3:
-            return render_template_string(REGISTER_PAGE, error='Имя слишком короткое (мин. 3 символа)')
+            return render_template_string(REGISTER_TEMPLATE, error='Пользователь уже существует')
+        if len(username) < 3 or len(username) > 20:
+            return render_template_string(REGISTER_TEMPLATE, error='Имя должно быть от 3 до 20 символов')
         if len(password) < 4:
-            return render_template_string(REGISTER_PAGE, error='Пароль слишком короткий (мин. 4 символа)')
-        users[username] = {'password': password, 'role': 'user'}
+            return render_template_string(REGISTER_TEMPLATE, error='Пароль должен быть минимум 4 символа')
+        users[username] = {
+            'password': hashlib.sha256(password.encode()).hexdigest(),
+            'role': 'user',
+            'avatar': '👤',
+            'banned': False,
+            'created_at': datetime.now().isoformat()
+        }
         save_users(users)
         return redirect(url_for('login'))
-    return render_template_string(REGISTER_PAGE, error=None)
+    return render_template_string(REGISTER_TEMPLATE, error=None)
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# SocketIO события
 @socketio.on('join')
 def handle_join(data):
+    username = session.get('username')
+    if not username or users.get(username, {}).get('banned'):
+        return
     room = data['room']
     join_room(room)
-    emit('history', history.get(room, []), to=request.sid)
-    emit('system', f'{data["name"]} присоединился', to=room, broadcast=True)
+    emit('history', messages.get(room, []), to=request.sid)
 
 @socketio.on('message')
 def handle_message(data):
+    username = session.get('username')
+    if not username or users.get(username, {}).get('banned'):
+        return
     room = data['room']
-    time_str = datetime.now().strftime('%H:%M:%S')
-    message = {'name': data['name'], 'text': data['text'], 'time': time_str, 'role': session.get('role', 'user')}
-    history.setdefault(room, []).append(message)
-    if len(history[room]) > 50:
-        history[room] = history[room][-50:]
-    save_messages(history)
+    text = data['text']
+    if len(text) > 500:
+        emit('system', 'Сообщение слишком длинное', to=request.sid)
+        return
+    msg_id = str(int(datetime.now().timestamp() * 1000))
+    message = {
+        'id': msg_id,
+        'name': username,
+        'text': text,
+        'time': datetime.now().strftime('%H:%M:%S'),
+        'role': users[username]['role'],
+        'avatar': users[username].get('avatar', '👤')
+    }
+    messages.setdefault(room, []).append(message)
+    if len(messages[room]) > 200:
+        messages[room] = messages[room][-200:]
+    save_messages(messages)
     emit('message', message, to=room, broadcast=True)
 
 @socketio.on('delete_message')
 def handle_delete(data):
-    if session.get('role') != 'admin':
+    username = session.get('username')
+    if not username:
         return
+    role = users[username]['role']
+    msg_id = data['messageId']
     room = data['room']
-    name = data['name']
-    text = data['text']
-    for msg in history.get(room, []):
-        if msg['name'] == name and msg['text'] == text:
-            history[room].remove(msg)
-            save_messages(history)
+    for i, msg in enumerate(messages.get(room, [])):
+        if msg.get('id') == msg_id:
+            if role == 'owner' or (role == 'admin' and msg['name'] != username) or msg['name'] == username:
+                messages[room].pop(i)
+                save_messages(messages)
+                emit('system', f'Сообщение от {msg["name"]} удалено', to=room, broadcast=True)
             break
+
+@socketio.on('ban_user')
+def handle_ban(data):
+    username = session.get('username')
+    if not username or users[username]['role'] not in ['owner', 'admin']:
+        return
+    target = data['username']
+    if target in users and users[target]['role'] != 'owner':
+        users[target]['banned'] = True
+        save_users(users)
+        emit('system', f'{target} заблокирован', to=room, broadcast=True)
+
+@socketio.on('typing')
+def handle_typing(data):
+    username = session.get('username')
+    if not username:
+        return
+    emit('typing', {'name': username, 'typing': data['typing']}, to=data['room'], broadcast=True, include_self=False)
 
 @socketio.on('switch_room')
 def handle_switch_room(data):
+    username = session.get('username')
+    if not username:
+        return
     old_room = data['old_room']
     new_room = data['new_room']
     leave_room(old_room)
-    join_room(new_room)
-    emit('history', history.get(new_room, []), to=request.sid)
-    emit('system', f'{data["name"]} перешёл в {new_room}', to=new_room, broadcast=True)
-
-@socketio.on('get_users')
-def handle_get_users():
-    emit('users_list', [{'name': u, 'role': users[u]['role']} for u in users])
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
+    join_room(new
