@@ -1,19 +1,20 @@
-from flask import Flask, render_template_string, request, session, redirect, url_for
+from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
 import os
 import json
 import hashlib
+import base64
 
 app = Flask(__name__)
 app.secret_key = 'chatic-secret-key-2024'
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # ==================== ФАЙЛЫ ДАННЫХ ====================
 USERS_FILE = 'users.json'
 MESSAGES_FILE = 'messages.json'
 ROOMS_FILE = 'rooms.json'
-SETTINGS_FILE = 'settings.json'
 
 def load_users():
     if os.path.exists(USERS_FILE):
@@ -24,14 +25,10 @@ def load_users():
             'password': hashlib.sha256('admin123'.encode()).hexdigest(),
             'role': 'owner',
             'avatar': '👑',
-            'banned': False,
-            'theme': 'light',
-            'created_at': datetime.now().isoformat()
-        },
-        'dimooon': {
-            'password': hashlib.sha256('1111'.encode()).hexdigest(),
-            'role': 'admin',
-            'avatar': '😎',
+            'avatar_base64': None,
+            'bio': '👑 Владелец чата',
+            'friends': [],
+            'friend_requests': [],
             'banned': False,
             'theme': 'light',
             'created_at': datetime.now().isoformat()
@@ -112,20 +109,36 @@ CHAT_HTML = '''
             transition: transform 0.2s;
         }
         .user-card:hover { transform: scale(1.02); }
-        .user-avatar { font-size: 48px; margin-bottom: 8px; }
+        .user-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-size: 32px;
+            overflow: hidden;
+        }
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .user-name { font-size: 18px; font-weight: bold; }
+        .user-bio { font-size: 11px; opacity: 0.8; margin-top: 5px; }
         .user-role { font-size: 12px; opacity: 0.9; margin-top: 4px; }
         .section-title { font-weight: 600; margin: 16px 0 8px 0; color: #374151; }
         body.dark .section-title { color: #9ca3af; }
-        .room-list, .user-list { list-style: none; }
-        .room-item, .user-item {
+        .room-list, .user-list, .friends-list { list-style: none; }
+        .room-item, .user-item, .friend-item {
             padding: 10px 12px;
             border-radius: 12px;
             cursor: pointer;
             margin-bottom: 4px;
             transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        .room-item:hover, .user-item:hover { background: rgba(0,0,0,0.05); }
+        .room-item:hover, .user-item:hover, .friend-item:hover { background: rgba(0,0,0,0.05); }
         .room-item.active { background: #667eea; color: white; }
         .add-room {
             display: flex;
@@ -188,14 +201,16 @@ CHAT_HTML = '''
         .message-avatar {
             width: 32px;
             height: 32px;
-            background: #667eea;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
             font-size: 14px;
+            background: #667eea;
+            color: white;
+            overflow: hidden;
         }
+        .message-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .message-content {
             background: #f3f4f6;
             padding: 8px 14px;
@@ -265,23 +280,34 @@ CHAT_HTML = '''
             color: white;
             cursor: pointer;
         }
-        .logout-btn {
-            margin-top: 20px;
+        .logout-btn, .settings-btn {
+            margin-top: 10px;
             padding: 10px;
             background: #fee2e2;
             border: none;
             border-radius: 20px;
             cursor: pointer;
             color: #dc2626;
+            width: 100%;
+        }
+        .settings-btn {
+            background: #e0e7ff;
+            color: #4f46e5;
         }
         body.dark .logout-btn {
             background: #374151;
             color: #f87171;
         }
+        body.dark .settings-btn {
+            background: #374151;
+            color: #818cf8;
+        }
         .badge-owner { background: #ef4444; font-size: 9px; padding: 2px 6px; border-radius: 12px; margin-left: 6px; }
         .badge-admin { background: #10b981; font-size: 9px; padding: 2px 6px; border-radius: 12px; margin-left: 6px; }
+        .online-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .friend-btn { font-size: 11px; background: rgba(0,0,0,0.1); border: none; border-radius: 16px; padding: 2px 8px; cursor: pointer; margin-left: auto; }
         
-        /* Модальное окно профиля */
+        /* Модальное окно */
         .modal {
             display: none;
             position: fixed;
@@ -296,20 +322,27 @@ CHAT_HTML = '''
             background: white;
             border-radius: 32px;
             padding: 32px;
-            max-width: 400px;
+            max-width: 450px;
             width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
         }
         body.dark .modal-content {
             background: #1f2937;
             color: white;
         }
-        .modal-content input, .modal-content select {
+        .modal-content input, .modal-content textarea, .modal-content select {
             width: 100%;
             padding: 12px;
             margin: 10px 0;
             border: 1px solid #ddd;
             border-radius: 24px;
             outline: none;
+        }
+        body.dark .modal-content input, body.dark .modal-content textarea {
+            background: #374151;
+            color: white;
+            border-color: #4b5563;
         }
         .modal-content button {
             background: #667eea;
@@ -326,14 +359,28 @@ CHAT_HTML = '''
             font-size: 24px;
             cursor: pointer;
         }
+        .friend-request-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
         @media (max-width: 600px) { .sidebar { width: 220px; } }
     </style>
 </head>
 <body>
 <div class="sidebar">
     <div class="user-card" id="profileBtn">
-        <div class="user-avatar">{{ avatar }}</div>
+        <div class="user-avatar" id="avatarDisplay">
+            {% if avatar_base64 %}
+            <img src="{{ avatar_base64 }}">
+            {% else %}
+            {{ avatar }}
+            {% endif %}
+        </div>
         <div class="user-name">{{ username }}{% if role == 'owner' %}<span class="badge-owner">ВЛ</span>{% elif role == 'admin' %}<span class="badge-admin">АДМ</span>{% endif %}</div>
+        <div class="user-bio">{{ bio }}</div>
         <div class="user-role">{{ role_name }}</div>
     </div>
     <div class="section-title">📌 Комнаты</div>
@@ -346,8 +393,9 @@ CHAT_HTML = '''
     {% endif %}
     <div class="section-title">👥 В чате</div>
     <div id="usersPanel" class="user-list"></div>
-    <div class="section-title">⚙️ Настройки</div>
-    <button id="themeToggleBtn" style="padding:10px; background:#e0e7ff; border:none; border-radius:20px; margin-bottom:8px; cursor:pointer;">🌙 Тёмная тема</button>
+    <div class="section-title">👫 Друзья</div>
+    <div id="friendsPanel" class="friends-list"></div>
+    <button class="settings-btn" id="settingsBtn">⚙️ Настройки</button>
     <button class="logout-btn" id="logoutBtn">🚪 Выйти</button>
 </div>
 <div class="chat-area">
@@ -366,15 +414,37 @@ CHAT_HTML = '''
 <!-- Модальное окно профиля -->
 <div id="profileModal" class="modal">
     <div class="modal-content">
-        <span class="close-btn" id="closeModal">&times;</span>
-        <h3>👤 Личный профиль</h3>
-        <label>Аватар (эмодзи или текст):</label>
+        <span class="close-btn" id="closeProfileModal">&times;</span>
+        <h3>👤 Мой профиль</h3>
+        <label>Аватар (эмодзи):</label>
         <input type="text" id="avatarInput" maxlength="2" placeholder="😀">
+        <label>Или загрузить изображение:</label>
+        <input type="file" id="avatarFileInput" accept="image/jpeg,image/png,image/gif">
+        <label>О себе:</label>
+        <textarea id="bioInput" rows="3" placeholder="Расскажите о себе..."></textarea>
         <label>Новое имя (3-20 символов):</label>
         <input type="text" id="newNameInput" placeholder="Новое имя">
         <label>Новый пароль (мин. 4 символа):</label>
         <input type="password" id="newPasswordInput" placeholder="Новый пароль">
         <button id="saveProfileBtn">💾 Сохранить</button>
+    </div>
+</div>
+
+<!-- Модальное окно настроек -->
+<div id="settingsModal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" id="closeSettingsModal">&times;</span>
+        <h3>⚙️ Настройки</h3>
+        <label>🌙 Тёмная тема</label>
+        <button id="themeToggleBtn" style="background:#e0e7ff; color:#4f46e5;">Переключить тему</button>
+        <label>📨 Заявки в друзья</label>
+        <div id="friendRequestsList"></div>
+        <hr style="margin: 15px 0;">
+        <label>👑 Команды (в чате)</label>
+        <p style="font-size:12px;">• <code>/giveadmin ИМЯ</code> — выдать админку (владелец)</p>
+        <p style="font-size:12px;">• <code>/unadmin ИМЯ</code> — снять админку (владелец)</p>
+        <p style="font-size:12px;">• <code>/addfriend ИМЯ</code> — добавить в друзья</p>
+        <p style="font-size:12px;">• <code>/acceptfriend ИМЯ</code> — принять заявку</p>
     </div>
 </div>
 
@@ -393,7 +463,6 @@ CHAT_HTML = '''
     const typingDiv = document.getElementById('typingStatus');
     const onlineCountSpan = document.getElementById('onlineCount');
     
-    // Тёмная тема
     function applyTheme() {
         if(darkMode) {
             document.body.classList.add('dark');
@@ -402,6 +471,24 @@ CHAT_HTML = '''
         }
     }
     applyTheme();
+    
+    // Модалки
+    const profileModal = document.getElementById('profileModal');
+    const settingsModal = document.getElementById('settingsModal');
+    document.getElementById('profileBtn')?.addEventListener('click', () => {
+        document.getElementById('bioInput').value = '{{ bio }}';
+        profileModal.style.display = 'flex';
+    });
+    document.getElementById('settingsBtn')?.addEventListener('click', () => {
+        settingsModal.style.display = 'flex';
+        loadFriendRequests();
+    });
+    document.getElementById('closeProfileModal')?.addEventListener('click', () => profileModal.style.display = 'none');
+    document.getElementById('closeSettingsModal')?.addEventListener('click', () => settingsModal.style.display = 'none');
+    window.onclick = (e) => {
+        if(e.target === profileModal) profileModal.style.display = 'none';
+        if(e.target === settingsModal) settingsModal.style.display = 'none';
+    };
     
     document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
         darkMode = !darkMode;
@@ -413,34 +500,80 @@ CHAT_HTML = '''
         });
     });
     
-    // Профиль
-    const modal = document.getElementById('profileModal');
-    document.getElementById('profileBtn')?.addEventListener('click', () => modal.style.display = 'flex');
-    document.getElementById('closeModal')?.addEventListener('click', () => modal.style.display = 'none');
-    window.onclick = (e) => { if(e.target === modal) modal.style.display = 'none'; };
+    // Загрузка аватарки
+    document.getElementById('avatarFileInput')?.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if(file && (file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/gif')) {
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                document.getElementById('avatarDisplay').innerHTML = `<img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+                window.tempAvatar = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
     
+    // Сохранение профиля
     document.getElementById('saveProfileBtn')?.addEventListener('click', () => {
-        const newAvatar = document.getElementById('avatarInput').value;
-        const newName = document.getElementById('newNameInput').value;
-        const newPassword = document.getElementById('newPasswordInput').value;
+        const data = {
+            avatar_emoji: document.getElementById('avatarInput').value,
+            avatar_base64: window.tempAvatar || null,
+            bio: document.getElementById('bioInput').value,
+            new_name: document.getElementById('newNameInput').value,
+            new_password: document.getElementById('newPasswordInput').value
+        };
         fetch('/update_profile', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({avatar: newAvatar, new_name: newName, new_password: newPassword})
+            body: JSON.stringify(data)
         }).then(res => res.json()).then(data => {
             if(data.success) {
-                alert('Профиль обновлён! Перезагрузите страницу для применения изменений.');
-                modal.style.display = 'none';
-                if(newName) setTimeout(() => location.reload(), 1000);
+                alert('Профиль обновлён! Страница будет перезагружена.');
+                profileModal.style.display = 'none';
+                setTimeout(() => location.reload(), 1000);
             } else alert('Ошибка: ' + data.error);
         });
     });
     
-    function addMessage(name, text, time, isOwn, avatar) {
+    function loadFriendRequests() {
+        fetch('/get_friend_requests').then(res => res.json()).then(data => {
+            const container = document.getElementById('friendRequestsList');
+            if(data.requests && data.requests.length) {
+                container.innerHTML = data.requests.map(r => `
+                    <div class="friend-request-item">
+                        <span>📨 ${escapeHtml(r)}</span>
+                        <button onclick="acceptFriend('${escapeHtml(r)}')" style="padding:4px 12px; border-radius:16px; border:none; background:#10b981; color:white;">✓ Принять</button>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<p style="color:#6b7280;">Нет заявок</p>';
+            }
+        });
+    }
+    
+    window.acceptFriend = function(name) {
+        fetch('/accept_friend', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({friend: name})
+        }).then(res => res.json()).then(data => {
+            alert(data.message);
+            loadFriendRequests();
+            socket.emit('get_users');
+        });
+    };
+    
+    function addMessage(name, text, time, isOwn, avatar, avatarBase64) {
         let div = document.createElement('div');
         div.className = `message ${isOwn ? 'message-own' : ''}`;
+        let avatarHtml = '';
+        if(avatarBase64) {
+            avatarHtml = `<img src="${avatarBase64}" style="width:100%;height:100%;object-fit:cover;">`;
+        } else {
+            avatarHtml = avatar || '👤';
+        }
         div.innerHTML = `
-            <div class="message-avatar">${avatar || '👤'}</div>
+            <div class="message-avatar" onclick="showUserProfile('${escapeHtml(name)}')">${avatarHtml}</div>
             <div class="message-content">
                 <div class="message-name">${escapeHtml(name)}<span class="message-time">${time}</span></div>
                 <div class="message-text">${escapeHtml(text)}</div>
@@ -449,6 +582,12 @@ CHAT_HTML = '''
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
+    
+    window.showUserProfile = function(name) {
+        fetch('/get_user_info/' + encodeURIComponent(name)).then(res => res.json()).then(data => {
+            alert(`${data.username}\n📝 ${data.bio || 'Нет описания'}\n👫 Друзья: ${data.friends_count || 0}\n⭐ Роль: ${data.role_display}`);
+        });
+    };
     
     function addSystemMessage(text) {
         let div = document.createElement('div');
@@ -466,11 +605,11 @@ CHAT_HTML = '''
     
     socket.on('history', (history) => {
         messagesDiv.innerHTML = '';
-        history.forEach(msg => addMessage(msg.name, msg.text, msg.time, msg.name === username, msg.avatar));
+        history.forEach(msg => addMessage(msg.name, msg.text, msg.time, msg.name === username, msg.avatar, msg.avatar_base64));
     });
     
     socket.on('new_message', (msg) => {
-        addMessage(msg.name, msg.text, msg.time, msg.name === username, msg.avatar);
+        addMessage(msg.name, msg.text, msg.time, msg.name === username, msg.avatar, msg.avatar_base64);
         if(msg.name !== username && !document.hasFocus()) {
             document.title = '🔔 Новое сообщение';
             setTimeout(() => { if(document.title === '🔔 Новое сообщение') document.title = 'Чатик'; }, 2000);
@@ -498,8 +637,33 @@ CHAT_HTML = '''
     
     socket.on('users_update', (usersList) => {
         const container = document.getElementById('usersPanel');
-        container.innerHTML = usersList.map(u => `<div class="user-item">${u.avatar || '👤'} ${escapeHtml(u.name)} ${u.role === 'owner' ? '<span class="badge-owner">ВЛ</span>' : (u.role === 'admin' ? '<span class="badge-admin">АДМ</span>' : '')}</div>`).join('');
+        container.innerHTML = usersList.map(u => `
+            <div class="user-item" onclick="showUserProfile('${escapeHtml(u.name)}')">
+                <span class="online-dot"></span>
+                <div class="message-avatar" style="width:24px;height:24px; font-size:12px;">${u.avatar_base64 ? `<img src="${u.avatar_base64}" style="width:100%;height:100%;">` : (u.avatar || '👤')}</div>
+                ${escapeHtml(u.name)} ${u.role === 'owner' ? '<span class="badge-owner">ВЛ</span>' : (u.role === 'admin' ? '<span class="badge-admin">АДМ</span>' : '')}
+                ${!u.is_friend && u.name !== username ? `<button class="friend-btn" onclick="event.stopPropagation(); addFriend('${escapeHtml(u.name)}')">+ Друг</button>` : ''}
+                ${u.is_friend ? '<span style="font-size:10px; margin-left:auto;">✓ Друг</span>' : ''}
+            </div>
+        `).join('');
         onlineCountSpan.innerText = `👥 ${usersList.length}`;
+    });
+    
+    window.addFriend = function(name) {
+        fetch('/add_friend', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({friend: name})
+        }).then(res => res.json()).then(data => {
+            addSystemMessage(data.message);
+        });
+    };
+    
+    socket.on('friends_update', (friendsList) => {
+        const container = document.getElementById('friendsPanel');
+        if(!container) return;
+        container.innerHTML = friendsList.map(f => `<div class="friend-item" onclick="showUserProfile('${escapeHtml(f.name)}')">👫 ${escapeHtml(f.name)}</div>`).join('');
+        if(friendsList.length === 0) container.innerHTML = '<div class="friend-item" style="color:#6b7280;">Нет друзей</div>';
     });
     
     socket.on('typing_status', (data) => {
@@ -512,9 +676,30 @@ CHAT_HTML = '''
     sendBtn.onclick = () => {
         let text = messageInput.value.trim();
         if(text) {
-            if(text.startsWith('/unadmin ')) {
+            if(text.startsWith('/giveadmin ') && role === 'owner') {
+                let target = text.split(' ')[1];
+                fetch('/give_admin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: target})})
+                    .then(res => res.json()).then(data => addSystemMessage(data.message));
+                messageInput.value = '';
+                return;
+            }
+            if(text.startsWith('/unadmin ') && role === 'owner') {
                 let target = text.split(' ')[1];
                 fetch('/remove_admin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: target})})
+                    .then(res => res.json()).then(data => addSystemMessage(data.message));
+                messageInput.value = '';
+                return;
+            }
+            if(text.startsWith('/addfriend ')) {
+                let target = text.split(' ')[1];
+                fetch('/add_friend', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({friend: target})})
+                    .then(res => res.json()).then(data => addSystemMessage(data.message));
+                messageInput.value = '';
+                return;
+            }
+            if(text.startsWith('/acceptfriend ')) {
+                let target = text.split(' ')[1];
+                fetch('/accept_friend', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({friend: target})})
                     .then(res => res.json()).then(data => addSystemMessage(data.message));
                 messageInput.value = '';
                 return;
@@ -575,156 +760,4 @@ def index():
     if not user or user.get('banned'):
         session.clear()
         return redirect(url_for('login'))
-    role_name = {'owner': 'Владелец', 'admin': 'Админ', 'moderator': 'Модератор', 'user': 'Пользователь'}.get(user['role'], 'Пользователь')
-    user_theme = user.get('theme', 'light')
-    return render_template_string(CHAT_HTML, username=session['username'], role=user['role'], role_name=role_name, avatar=user.get('avatar', '👤'), user_theme=user_theme)
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        hashed = hashlib.sha256(password.encode()).hexdigest()
-        if username in users and users[username]['password'] == hashed:
-            if users[username].get('banned'):
-                return render_template_string(LOGIN_PAGE, error='Вы заблокированы')
-            session['username'] = username
-            return redirect(url_for('index'))
-        return render_template_string(LOGIN_PAGE, error='Неверное имя или пароль')
-    return render_template_string(LOGIN_PAGE, error=None)
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        if username in users:
-            return render_template_string(REGISTER_PAGE, error='Пользователь уже существует')
-        if len(username) < 3 or len(username) > 20:
-            return render_template_string(REGISTER_PAGE, error='Имя от 3 до 20 символов')
-        if len(password) < 4:
-            return render_template_string(REGISTER_PAGE, error='Пароль минимум 4 символа')
-        users[username] = {'password': hashlib.sha256(password.encode()).hexdigest(), 'role': 'user', 'avatar': '👤', 'banned': False, 'theme': 'light', 'created_at': datetime.now().isoformat()}
-        save_users(users)
-        return redirect(url_for('login'))
-    return render_template_string(REGISTER_PAGE, error=None)
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-@app.route('/save_theme', methods=['POST'])
-def save_theme():
-    if 'username' not in session:
-        return {'error': 'Not logged in'}, 401
-    data = request.json
-    theme = data.get('theme', 'light')
-    users[session['username']]['theme'] = theme
-    save_users(users)
-    return {'success': True}
-
-@app.route('/update_profile', methods=['POST'])
-def update_profile():
-    if 'username' not in session:
-        return {'error': 'Not logged in'}, 401
-    data = request.json
-    username = session['username']
-    avatar = data.get('avatar')
-    new_name = data.get('new_name')
-    new_password = data.get('new_password')
-    if avatar and len(avatar) <= 2:
-        users[username]['avatar'] = avatar
-    if new_name:
-        if len(new_name) < 3 or len(new_name) > 20:
-            return {'error': 'Имя от 3 до 20 символов'}, 400
-        if new_name in users and new_name != username:
-            return {'error': 'Имя уже занято'}, 400
-        users[new_name] = users.pop(username)
-        session['username'] = new_name
-        username = new_name
-    if new_password and len(new_password) >= 4:
-        users[username]['password'] = hashlib.sha256(new_password.encode()).hexdigest()
-    save_users(users)
-    return {'success': True, 'new_name': new_name if new_name else None}
-
-@app.route('/remove_admin', methods=['POST'])
-def remove_admin():
-    if 'username' not in session or users[session['username']]['role'] != 'owner':
-        return {'message': 'Только владелец может снимать админку'}
-    target = request.json.get('username')
-    if target in users and users[target]['role'] == 'admin':
-        users[target]['role'] = 'user'
-        save_users(users)
-        return {'message': f'У {target} снята роль администратора'}
-    return {'message': 'Пользователь не найден или не является админом'}
-
-# ==================== SOCKETIO ====================
-@socketio.on('join')
-def handle_join(data):
-    username = session.get('username')
-    if not username or users.get(username, {}).get('banned'):
-        return
-    room = data['room']
-    join_room(room)
-    emit('history', messages.get(room, []), to=request.sid)
-
-@socketio.on('send_message')
-def handle_send_message(data):
-    username = session.get('username')
-    if not username or users.get(username, {}).get('banned'):
-        return
-    room = data['room']
-    text = data['text']
-    message = {'name': username, 'text': text, 'time': datetime.now().strftime('%H:%M:%S'), 'avatar': users[username].get('avatar', '👤')}
-    if room not in messages:
-        messages[room] = []
-    messages[room].append(message)
-    if len(messages[room]) > 100:
-        messages[room] = messages[room][-100:]
-    save_messages(messages)
-    emit('new_message', message, to=room, broadcast=True)
-
-@socketio.on('switch_room')
-def handle_switch_room(data):
-    username = session.get('username')
-    if not username:
-        return
-    old_room = data['old_room']
-    new_room = data['new_room']
-    leave_room(old_room)
-    join_room(new_room)
-    emit('history', messages.get(new_room, []), to=request.sid)
-
-@socketio.on('create_room')
-def handle_create_room(data):
-    username = session.get('username')
-    if not username or users[username]['role'] not in ['owner', 'admin']:
-        return
-    new_room = data['room'].strip()
-    if new_room and new_room not in rooms:
-        rooms.append(new_room)
-        messages[new_room] = []
-        save_rooms(rooms)
-        save_messages(messages)
-        emit('rooms_update', rooms, broadcast=True)
-
-@socketio.on('typing')
-def handle_typing(data):
-    username = session.get('username')
-    if not username:
-        return
-    emit('typing_status', {'name': username, 'typing': data['typing']}, to=data['room'], broadcast=True, include_self=False)
-
-@socketio.on('get_rooms')
-def handle_get_rooms():
-    emit('rooms_update', rooms)
-
-@socketio.on('get_users')
-def handle_get_users():
-    users_list = [{'name': name, 'role': data['role'], 'avatar': data.get('avatar', '👤')} for name, data in users.items() if not data.get('banned')]
-    emit('users_update', users_list, broadcast=True)
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
+    role_name = {'owner': 'Владелец', 'admin': 'Админ', 'moderator': 'Модератор', 'user': 'Пользователь'}.get
