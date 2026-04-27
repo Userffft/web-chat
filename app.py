@@ -9,10 +9,11 @@ app = Flask(__name__)
 app.secret_key = 'chatic-secret-key-2024'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# ==================== ДАННЫЕ ====================
+# ==================== ФАЙЛЫ ДАННЫХ ====================
 USERS_FILE = 'users.json'
 MESSAGES_FILE = 'messages.json'
 ROOMS_FILE = 'rooms.json'
+SETTINGS_FILE = 'settings.json'
 
 def load_users():
     if os.path.exists(USERS_FILE):
@@ -23,13 +24,17 @@ def load_users():
             'password': hashlib.sha256('admin123'.encode()).hexdigest(),
             'role': 'owner',
             'avatar': '👑',
-            'banned': False
+            'banned': False,
+            'theme': 'light',
+            'created_at': datetime.now().isoformat()
         },
         'dimooon': {
             'password': hashlib.sha256('1111'.encode()).hexdigest(),
             'role': 'admin',
             'avatar': '😎',
-            'banned': False
+            'banned': False,
+            'theme': 'light',
+            'created_at': datetime.now().isoformat()
         }
     }
 
@@ -68,7 +73,7 @@ CHAT_HTML = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Чатик</title>
+    <title>Чатик · {{ username }}</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -77,6 +82,10 @@ CHAT_HTML = '''
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             height: 100vh;
             display: flex;
+            transition: all 0.3s;
+        }
+        body.dark {
+            background: #1e1b4b;
         }
         .sidebar {
             width: 280px;
@@ -86,6 +95,11 @@ CHAT_HTML = '''
             display: flex;
             flex-direction: column;
             padding: 20px;
+            transition: all 0.3s;
+        }
+        body.dark .sidebar {
+            background: #1f2937;
+            color: white;
         }
         .user-card {
             text-align: center;
@@ -94,11 +108,15 @@ CHAT_HTML = '''
             border-radius: 24px;
             color: white;
             margin-bottom: 20px;
+            cursor: pointer;
+            transition: transform 0.2s;
         }
+        .user-card:hover { transform: scale(1.02); }
         .user-avatar { font-size: 48px; margin-bottom: 8px; }
         .user-name { font-size: 18px; font-weight: bold; }
         .user-role { font-size: 12px; opacity: 0.9; margin-top: 4px; }
         .section-title { font-weight: 600; margin: 16px 0 8px 0; color: #374151; }
+        body.dark .section-title { color: #9ca3af; }
         .room-list, .user-list { list-style: none; }
         .room-item, .user-item {
             padding: 10px 12px;
@@ -134,12 +152,24 @@ CHAT_HTML = '''
             display: flex;
             flex-direction: column;
             background: white;
+            transition: all 0.3s;
+        }
+        body.dark .chat-area {
+            background: #111827;
         }
         .chat-header {
             padding: 16px 24px;
             border-bottom: 1px solid #eee;
             background: white;
             font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        body.dark .chat-header {
+            background: #1f2937;
+            color: white;
+            border-color: #374151;
         }
         .messages {
             flex: 1;
@@ -171,6 +201,10 @@ CHAT_HTML = '''
             padding: 8px 14px;
             border-radius: 18px;
             max-width: 60%;
+        }
+        body.dark .message-content {
+            background: #374151;
+            color: white;
         }
         .message-own .message-content {
             background: #667eea;
@@ -206,12 +240,21 @@ CHAT_HTML = '''
             border-top: 1px solid #eee;
             background: white;
         }
+        body.dark .input-area {
+            background: #1f2937;
+            border-color: #374151;
+        }
         .input-area input {
             flex: 1;
             padding: 12px 18px;
             border: 1px solid #ddd;
             border-radius: 30px;
             outline: none;
+        }
+        body.dark .input-area input {
+            background: #374151;
+            color: white;
+            border-color: #4b5563;
         }
         .input-area button {
             background: #667eea;
@@ -231,14 +274,64 @@ CHAT_HTML = '''
             cursor: pointer;
             color: #dc2626;
         }
+        body.dark .logout-btn {
+            background: #374151;
+            color: #f87171;
+        }
         .badge-owner { background: #ef4444; font-size: 9px; padding: 2px 6px; border-radius: 12px; margin-left: 6px; }
         .badge-admin { background: #10b981; font-size: 9px; padding: 2px 6px; border-radius: 12px; margin-left: 6px; }
+        
+        /* Модальное окно профиля */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 32px;
+            padding: 32px;
+            max-width: 400px;
+            width: 90%;
+        }
+        body.dark .modal-content {
+            background: #1f2937;
+            color: white;
+        }
+        .modal-content input, .modal-content select {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 24px;
+            outline: none;
+        }
+        .modal-content button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 24px;
+            width: 100%;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .close-btn {
+            float: right;
+            font-size: 24px;
+            cursor: pointer;
+        }
         @media (max-width: 600px) { .sidebar { width: 220px; } }
     </style>
 </head>
 <body>
 <div class="sidebar">
-    <div class="user-card">
+    <div class="user-card" id="profileBtn">
         <div class="user-avatar">{{ avatar }}</div>
         <div class="user-name">{{ username }}{% if role == 'owner' %}<span class="badge-owner">ВЛ</span>{% elif role == 'admin' %}<span class="badge-admin">АДМ</span>{% endif %}</div>
         <div class="user-role">{{ role_name }}</div>
@@ -253,10 +346,15 @@ CHAT_HTML = '''
     {% endif %}
     <div class="section-title">👥 В чате</div>
     <div id="usersPanel" class="user-list"></div>
+    <div class="section-title">⚙️ Настройки</div>
+    <button id="themeToggleBtn" style="padding:10px; background:#e0e7ff; border:none; border-radius:20px; margin-bottom:8px; cursor:pointer;">🌙 Тёмная тема</button>
     <button class="logout-btn" id="logoutBtn">🚪 Выйти</button>
 </div>
 <div class="chat-area">
-    <div class="chat-header" id="currentRoom">Главная</div>
+    <div class="chat-header">
+        <span id="currentRoom">Главная</span>
+        <span id="onlineCount" style="font-size:12px;">👥 0</span>
+    </div>
     <div id="messagesList" class="messages"></div>
     <div id="typingStatus" class="typing"></div>
     <div class="input-area">
@@ -264,11 +362,28 @@ CHAT_HTML = '''
         <button id="sendBtn">📤</button>
     </div>
 </div>
+
+<!-- Модальное окно профиля -->
+<div id="profileModal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" id="closeModal">&times;</span>
+        <h3>👤 Личный профиль</h3>
+        <label>Аватар (эмодзи или текст):</label>
+        <input type="text" id="avatarInput" maxlength="2" placeholder="😀">
+        <label>Новое имя (3-20 символов):</label>
+        <input type="text" id="newNameInput" placeholder="Новое имя">
+        <label>Новый пароль (мин. 4 символа):</label>
+        <input type="password" id="newPasswordInput" placeholder="Новый пароль">
+        <button id="saveProfileBtn">💾 Сохранить</button>
+    </div>
+</div>
+
 <script>
     let socket = io();
     let currentRoom = 'Главная';
     let username = '{{ username }}';
     let role = '{{ role }}';
+    let darkMode = {{ 'true' if user_theme == 'dark' else 'false' }};
     let typingUsers = {};
     let typingTimeout = null;
     
@@ -276,6 +391,50 @@ CHAT_HTML = '''
     const messageInput = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
     const typingDiv = document.getElementById('typingStatus');
+    const onlineCountSpan = document.getElementById('onlineCount');
+    
+    // Тёмная тема
+    function applyTheme() {
+        if(darkMode) {
+            document.body.classList.add('dark');
+        } else {
+            document.body.classList.remove('dark');
+        }
+    }
+    applyTheme();
+    
+    document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
+        darkMode = !darkMode;
+        applyTheme();
+        fetch('/save_theme', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({theme: darkMode ? 'dark' : 'light'})
+        });
+    });
+    
+    // Профиль
+    const modal = document.getElementById('profileModal');
+    document.getElementById('profileBtn')?.addEventListener('click', () => modal.style.display = 'flex');
+    document.getElementById('closeModal')?.addEventListener('click', () => modal.style.display = 'none');
+    window.onclick = (e) => { if(e.target === modal) modal.style.display = 'none'; };
+    
+    document.getElementById('saveProfileBtn')?.addEventListener('click', () => {
+        const newAvatar = document.getElementById('avatarInput').value;
+        const newName = document.getElementById('newNameInput').value;
+        const newPassword = document.getElementById('newPasswordInput').value;
+        fetch('/update_profile', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({avatar: newAvatar, new_name: newName, new_password: newPassword})
+        }).then(res => res.json()).then(data => {
+            if(data.success) {
+                alert('Профиль обновлён! Перезагрузите страницу для применения изменений.');
+                modal.style.display = 'none';
+                if(newName) setTimeout(() => location.reload(), 1000);
+            } else alert('Ошибка: ' + data.error);
+        });
+    });
     
     function addMessage(name, text, time, isOwn, avatar) {
         let div = document.createElement('div');
@@ -318,9 +477,7 @@ CHAT_HTML = '''
         }
     });
     
-    socket.on('system_message', (data) => {
-        addSystemMessage(data.text);
-    });
+    socket.on('system_message', (data) => addSystemMessage(data.text));
     
     socket.on('rooms_update', (roomsList) => {
         const container = document.getElementById('roomsPanel');
@@ -342,6 +499,7 @@ CHAT_HTML = '''
     socket.on('users_update', (usersList) => {
         const container = document.getElementById('usersPanel');
         container.innerHTML = usersList.map(u => `<div class="user-item">${u.avatar || '👤'} ${escapeHtml(u.name)} ${u.role === 'owner' ? '<span class="badge-owner">ВЛ</span>' : (u.role === 'admin' ? '<span class="badge-admin">АДМ</span>' : '')}</div>`).join('');
+        onlineCountSpan.innerText = `👥 ${usersList.length}`;
     });
     
     socket.on('typing_status', (data) => {
@@ -354,6 +512,13 @@ CHAT_HTML = '''
     sendBtn.onclick = () => {
         let text = messageInput.value.trim();
         if(text) {
+            if(text.startsWith('/unadmin ')) {
+                let target = text.split(' ')[1];
+                fetch('/remove_admin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: target})})
+                    .then(res => res.json()).then(data => addSystemMessage(data.message));
+                messageInput.value = '';
+                return;
+            }
             socket.emit('send_message', { text: text, room: currentRoom });
             messageInput.value = '';
         }
@@ -411,7 +576,8 @@ def index():
         session.clear()
         return redirect(url_for('login'))
     role_name = {'owner': 'Владелец', 'admin': 'Админ', 'moderator': 'Модератор', 'user': 'Пользователь'}.get(user['role'], 'Пользователь')
-    return render_template_string(CHAT_HTML, username=session['username'], role=user['role'], role_name=role_name, avatar=user.get('avatar', '👤'))
+    user_theme = user.get('theme', 'light')
+    return render_template_string(CHAT_HTML, username=session['username'], role=user['role'], role_name=role_name, avatar=user.get('avatar', '👤'), user_theme=user_theme)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -438,7 +604,7 @@ def register():
             return render_template_string(REGISTER_PAGE, error='Имя от 3 до 20 символов')
         if len(password) < 4:
             return render_template_string(REGISTER_PAGE, error='Пароль минимум 4 символа')
-        users[username] = {'password': hashlib.sha256(password.encode()).hexdigest(), 'role': 'user', 'avatar': '👤', 'banned': False}
+        users[username] = {'password': hashlib.sha256(password.encode()).hexdigest(), 'role': 'user', 'avatar': '👤', 'banned': False, 'theme': 'light', 'created_at': datetime.now().isoformat()}
         save_users(users)
         return redirect(url_for('login'))
     return render_template_string(REGISTER_PAGE, error=None)
@@ -447,6 +613,51 @@ def register():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+@app.route('/save_theme', methods=['POST'])
+def save_theme():
+    if 'username' not in session:
+        return {'error': 'Not logged in'}, 401
+    data = request.json
+    theme = data.get('theme', 'light')
+    users[session['username']]['theme'] = theme
+    save_users(users)
+    return {'success': True}
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    if 'username' not in session:
+        return {'error': 'Not logged in'}, 401
+    data = request.json
+    username = session['username']
+    avatar = data.get('avatar')
+    new_name = data.get('new_name')
+    new_password = data.get('new_password')
+    if avatar and len(avatar) <= 2:
+        users[username]['avatar'] = avatar
+    if new_name:
+        if len(new_name) < 3 or len(new_name) > 20:
+            return {'error': 'Имя от 3 до 20 символов'}, 400
+        if new_name in users and new_name != username:
+            return {'error': 'Имя уже занято'}, 400
+        users[new_name] = users.pop(username)
+        session['username'] = new_name
+        username = new_name
+    if new_password and len(new_password) >= 4:
+        users[username]['password'] = hashlib.sha256(new_password.encode()).hexdigest()
+    save_users(users)
+    return {'success': True, 'new_name': new_name if new_name else None}
+
+@app.route('/remove_admin', methods=['POST'])
+def remove_admin():
+    if 'username' not in session or users[session['username']]['role'] != 'owner':
+        return {'message': 'Только владелец может снимать админку'}
+    target = request.json.get('username')
+    if target in users and users[target]['role'] == 'admin':
+        users[target]['role'] = 'user'
+        save_users(users)
+        return {'message': f'У {target} снята роль администратора'}
+    return {'message': 'Пользователь не найден или не является админом'}
 
 # ==================== SOCKETIO ====================
 @socketio.on('join')
@@ -465,12 +676,7 @@ def handle_send_message(data):
         return
     room = data['room']
     text = data['text']
-    message = {
-        'name': username,
-        'text': text,
-        'time': datetime.now().strftime('%H:%M:%S'),
-        'avatar': users[username].get('avatar', '👤')
-    }
+    message = {'name': username, 'text': text, 'time': datetime.now().strftime('%H:%M:%S'), 'avatar': users[username].get('avatar', '👤')}
     if room not in messages:
         messages[room] = []
     messages[room].append(message)
@@ -502,13 +708,6 @@ def handle_create_room(data):
         save_rooms(rooms)
         save_messages(messages)
         emit('rooms_update', rooms, broadcast=True)
-
-@socketio.on('delete_message')
-def handle_delete_message(data):
-    username = session.get('username')
-    if not username or users[username]['role'] not in ['owner', 'admin']:
-        return
-    # Функция удаления (опционально)
 
 @socketio.on('typing')
 def handle_typing(data):
