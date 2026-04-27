@@ -588,60 +588,66 @@ CHAT_TEMPLATE = '''
         typingTimeout = setTimeout(() => socket.emit('typing', { room: currentRoom, typing: false }), 1000);
     };
     
-    document.getElementById('createRoomBtn')?.addEventListener('click', () => {
-        const newRoom = document.getElementById('newRoomName').value.trim();
-        if(newRoom) {
-            socket.emit('create_room', { room: newRoom });
-            document.getElementById('newRoomName').value = '';
-        }
-    });
+    if(document.getElementById('createRoomBtn')) {
+        document.getElementById('createRoomBtn').onclick = () => {
+            const newRoom = document.getElementById('newRoomName').value.trim();
+            if(newRoom) {
+                socket.emit('create_room', { room: newRoom });
+                document.getElementById('newRoomName').value = '';
+            }
+        };
+    }
     
-    document.getElementById('searchBtn')?.addEventListener('click', () => {
-        const query = prompt('Поиск сообщений:');
-        if(query) {
-            const messages = document.querySelectorAll('.message-text');
-            let found = false;
-            messages.forEach(msg => {
-                if(msg.textContent.toLowerCase().includes(query.toLowerCase())) {
-                    msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    msg.style.background = '#fef3c7';
-                    setTimeout(() => msg.style.background = '', 2000);
-                    found = true;
-                }
-            });
-            if(!found) alert('Ничего не найдено');
-        }
-    });
+    if(document.getElementById('searchBtn')) {
+        document.getElementById('searchBtn').onclick = () => {
+            const query = prompt('Поиск сообщений:');
+            if(query) {
+                const messages = document.querySelectorAll('.message-text');
+                let found = false;
+                messages.forEach(msg => {
+                    if(msg.textContent.toLowerCase().includes(query.toLowerCase())) {
+                        msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        msg.style.background = '#fef3c7';
+                        setTimeout(() => msg.style.background = '', 2000);
+                        found = true;
+                    }
+                });
+                if(!found) alert('Ничего не найдено');
+            }
+        };
+    }
     
-    document.getElementById('emojiBtn')?.addEventListener('click', () => {
+    if(document.getElementById('emojiBtn')) {
         const emojis = ['😀','😂','❤️','👍','🎉','🔥','😍','🥹','😭','🤔','👋','🙏','✨','💯','😎','🥳'];
-        const picker = document.createElement('div');
-        picker.style.position = 'fixed';
-        picker.style.bottom = '80px';
-        picker.style.left = '20px';
-        picker.style.background = 'white';
-        picker.style.borderRadius = '16px';
-        picker.style.padding = '12px';
-        picker.style.display = 'grid';
-        picker.style.gridTemplateColumns = 'repeat(6, 1fr)';
-        picker.style.gap = '8px';
-        picker.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-        picker.style.zIndex = '1000';
-        emojis.forEach(emoji => {
-            const span = document.createElement('span');
-            span.textContent = emoji;
-            span.style.fontSize = '24px';
-            span.style.cursor = 'pointer';
-            span.onclick = () => {
-                messageInput.value += emoji;
-                messageInput.focus();
-                picker.remove();
-            };
-            picker.appendChild(span);
-        });
-        document.body.appendChild(picker);
-        setTimeout(() => picker.remove(), 5000);
-    });
+        document.getElementById('emojiBtn').onclick = () => {
+            const picker = document.createElement('div');
+            picker.style.position = 'fixed';
+            picker.style.bottom = '80px';
+            picker.style.left = '20px';
+            picker.style.background = 'white';
+            picker.style.borderRadius = '16px';
+            picker.style.padding = '12px';
+            picker.style.display = 'grid';
+            picker.style.gridTemplateColumns = 'repeat(6, 1fr)';
+            picker.style.gap = '8px';
+            picker.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+            picker.style.zIndex = '1000';
+            emojis.forEach(emoji => {
+                const span = document.createElement('span');
+                span.textContent = emoji;
+                span.style.fontSize = '24px';
+                span.style.cursor = 'pointer';
+                span.onclick = () => {
+                    messageInput.value += emoji;
+                    messageInput.focus();
+                    picker.remove();
+                };
+                picker.appendChild(span);
+            });
+            document.body.appendChild(picker);
+            setTimeout(() => picker.remove(), 5000);
+        };
+    }
     
     socket.emit('get_rooms');
     socket.emit('get_users');
@@ -809,8 +815,7 @@ def handle_get_rooms():
 def handle_get_users():
     users_list = [{'name': name, 'role': data['role'], 'avatar': data.get('avatar', '👤')} 
                   for name, data in users.items() if not data.get('banned')]
-    emit('users_list', users_list, broadcast=True)
+    emit('users_list', users_list)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, allow_unsafe)
