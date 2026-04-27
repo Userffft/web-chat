@@ -41,17 +41,29 @@ def load_users():
         }
     }
 
-def save_users(u): json.dump(u, open(USERS_FILE, 'w'))
+def save_users(u): 
+    with open(USERS_FILE, 'w') as f:
+        json.dump(u, f)
+
 def load_messages():
     if os.path.exists(MESSAGES_FILE):
-        return json.load(open(MESSAGES_FILE))
+        with open(MESSAGES_FILE, 'r') as f:
+            return json.load(f)
     return {'Главная': []}
-def save_messages(m): json.dump(m, open(MESSAGES_FILE, 'w'))
+
+def save_messages(m): 
+    with open(MESSAGES_FILE, 'w') as f:
+        json.dump(m, f)
+
 def load_rooms():
     if os.path.exists(ROOMS_FILE):
-        return json.load(open(ROOMS_FILE))
+        with open(ROOMS_FILE, 'r') as f:
+            return json.load(f)
     return ['Главная', 'Случайная', 'Помощь']
-def save_rooms(r): json.dump(r, open(ROOMS_FILE, 'w'))
+
+def save_rooms(r): 
+    with open(ROOMS_FILE, 'w') as f:
+        json.dump(r, f)
 
 users = load_users()
 messages = load_messages()
@@ -172,7 +184,16 @@ def register():
             return render_template_string(REG, error='Имя 3-20')
         if len(pwd) < 4:
             return render_template_string(REG, error='Пароль мин 4')
-        users[name] = {'password': hashlib.sha256(pwd.encode()).hexdigest(), 'role': 'user', 'avatar': '👤', 'bio': '', 'friends': [], 'requests': [], 'banned': False, 'theme': 'light'}
+        users[name] = {
+            'password': hashlib.sha256(pwd.encode()).hexdigest(),
+            'role': 'user',
+            'avatar': '👤',
+            'bio': '',
+            'friends': [],
+            'requests': [],
+            'banned': False,
+            'theme': 'light'
+        }
         save_users(users)
         return redirect(url_for('login'))
     return render_template_string(REG)
@@ -284,12 +305,4 @@ def remove_friend():
 def get_requests():
     if 'username' not in session:
         return jsonify({'requests': []})
-    return jsonify({'requests': users[session['username']].get('requests', [])})
-
-@app.route('/user_info/<name>')
-def user_info(name):
-    if name not in users:
-        return jsonify({'error': 'Not found'}), 404
-    u = users[name]
-    is_friend = False
-    if session.get('username') and session['username']
+    return jsonify
