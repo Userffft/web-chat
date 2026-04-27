@@ -16,14 +16,10 @@ MESSAGES_FILE = os.path.join(DB_PATH, 'messages.json')
 ROOMS_FILE = os.path.join(DB_PATH, 'rooms.json')
 DMS_FILE = os.path.join(DB_PATH, 'dms.json')
 REPORTS_FILE = os.path.join(DB_PATH, 'reports.json')
-NOTIFS_FILE = os.path.join(DB_PATH, 'user_notifications.json')
 
 app = Flask(__name__)
 app.secret_key = 'secret-key-2024'
 socketio = SocketIO(app, cors_allowed_origins="*")
-
-# Глобальный список онлайн пользователей
-online_users = set()
 
 # -------------------------- ФУНКЦИИ ДЛЯ РАБОТЫ С ДАННЫМИ --------------------------
 def generate_short_id():
@@ -82,7 +78,7 @@ def load_rooms():
     if os.path.exists(ROOMS_FILE):
         with open(ROOMS_FILE, 'r') as f:
             return json.load(f)
-    return ['Главная']   # только одна главная комната
+    return ['Главная']
 
 def save_rooms(r):
     with open(ROOMS_FILE, 'w') as f:
@@ -107,22 +103,6 @@ def load_reports():
 def save_reports(r):
     with open(REPORTS_FILE, 'w') as f:
         json.dump(r, f)
-
-def load_user_notifications(username):
-    if os.path.exists(NOTIFS_FILE):
-        with open(NOTIFS_FILE, 'r') as f:
-            all_notifs = json.load(f)
-        return all_notifs.get(username, [])
-    return []
-
-def save_user_notifications(username, notifs):
-    all_notifs = {}
-    if os.path.exists(NOTIFS_FILE):
-        with open(NOTIFS_FILE, 'r') as f:
-            all_notifs = json.load(f)
-    all_notifs[username] = notifs[-50:]   # храним последние 50 уведомлений
-    with open(NOTIFS_FILE, 'w') as f:
-        json.dump(all_notifs, f)
 
 users = load_users()
 messages = load_messages()
@@ -151,76 +131,412 @@ REGISTER_HTML = '''
 </html>
 '''
 
-# -------------------------- CHAT_HTML (полная версия с новыми функциями) --------------------------
-# Из-за ограничения длины сообщения я укажу, что шаблон идентичен первому варианту,
-# но с добавленными элементами: кнопка поддержки, список офлайн, полноэкранные ЛС,
-# сохранение уведомлений, улучшенное время сообщений и т.д.
-# Для экономии места, пожалуйста, используйте уже имеющийся у вас CHAT_HTML,
-# внеся в него следующие изменения (см. инструкции ниже).
-# Если вам нужен полный готовый HTML, напишите – я вышлю его отдельно.
-
-# Так как здесь невозможно разместить 300+ строк HTML, я дам патч к уже существующему чату.
-# Для удобства я создам отдельный репозиторий, но в рамках ответа приведу только изменённые части.
-
-# Пожалуйста, примените следующие изменения к вашему CHAT_HTML (он у вас уже есть из предыдущих вариантов).
-
-# Изменения в CHAT_HTML:
-
-# 1. В блоке .chat-header добавить кнопку поддержки и кнопку "Офлайн":
-"""
-<div class="top-bar">
-    <span id="roomName">Главная</span>
-    <span class="users-count" id="regUsersCount">👥 Всего: 0</span>
-    <button id="supportBtn" class="notify-btn" style="background:#3b82f6;">✉️</button>
-    <button id="offlineBtn" class="notify-btn" style="background:#8b5cf6;">👥 Офлайн</button>
+CHAT_HTML = '''
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"><title>Чатик</title><script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script><style>
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#1e1b4b,#4c1d95);height:100vh;display:flex;overflow:hidden;transition:background 0.3s}body.dark{background:#0f0f0f}.sidebar{width:280px;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-right:1px solid rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow-y:auto;transition:background 0.3s,color 0.3s}body.dark .sidebar{background:#1a1a1a;color:#fff;border-color:#333}.user-card{text-align:center;padding:24px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;margin-bottom:16px}body.dark .user-card{background:linear-gradient(135deg,#4f46e5,#6d28d9)}.user-avatar{width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;overflow:hidden}.user-avatar img{width:100%;height:100%;object-fit:cover}.user-name{font-size:18px;font-weight:700}.user-bio{font-size:11px;opacity:0.85;margin-top:5px}.user-id{font-size:9px;opacity:0.6;margin-top:3px}.section-title{font-weight:600;padding:16px 20px 8px 20px;color:#475569;font-size:12px;text-transform:uppercase}body.dark .section-title{color:#94a3b8}.room-item,.user-item{padding:12px 20px;margin:4px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:0.2s}.room-item:hover,.user-item:hover{background:rgba(0,0,0,0.05)}body.dark .room-item:hover,body.dark .user-item:hover{background:rgba(255,255,255,0.1)}.room-item.active{background:#4f46e5;color:#fff}.delete-room{background:#ef4444;border:none;border-radius:20px;padding:4px 8px;color:#fff;margin-left:auto;cursor:pointer;font-size:10px}.add-room{display:flex;gap:8px;margin:12px}.add-room input{flex:1;padding:10px;border-radius:40px;border:1px solid #ddd;outline:none}body.dark .add-room input{background:#333;color:#fff;border-color:#555}.add-room button{background:#4f46e5;color:#fff;border:none;border-radius:40px;padding:8px 20px;cursor:pointer}.chat-area{flex:1;display:flex;flex-direction:column;background:#fff;transition:background 0.3s}body.dark .chat-area{background:#0a0a0a}.chat-header{padding:12px 20px;background:#fff;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}body.dark .chat-header{background:#1a1a1a;border-color:#333;color:#fff}.top-bar{display:flex;align-items:center;gap:15px;flex-wrap:wrap}.users-count{background:#4f46e5;padding:4px 10px;border-radius:20px;font-size:12px;color:#fff}.messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:8px}.message{display:flex;gap:10px;align-items:flex-start}.message-own{justify-content:flex-end}@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.message-avatar{width:36px;height:36px;border-radius:50%;background:#4f46e5;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0;overflow:hidden}.message-avatar img{width:100%;height:100%;object-fit:cover}.message-content{background:#f1f5f9;padding:8px 12px;border-radius:18px;max-width:65%;word-break:break-word;position:relative}body.dark .message-content{background:#2a2a2a;color:#e2e8f0}.message-own .message-content{background:#4f46e5;color:#fff}.message-name{font-weight:700;font-size:12px;display:flex;align-items:center;gap:6px;margin-bottom:2px}.message-time{font-size:9px;opacity:0.6;margin-left:6px}.message-text{margin-top:2px;font-size:14px;line-height:1.4}.message-actions{position:absolute;right:-28px;top:4px;display:flex;gap:4px;opacity:0;transition:opacity 0.2s}.message:hover .message-actions{opacity:1}.delete-msg{background:#374151;border:none;border-radius:50%;width:24px;height:24px;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:transform 0.1s}.delete-msg:active{transform:scale(0.9)}.badge-owner{background:#ef4444;font-size:8px;padding:2px 6px;border-radius:20px}.badge-admin{background:#10b981;font-size:8px;padding:2px 6px;border-radius:20px}.badge-moderator{background:#f59e0b;font-size:8px;padding:2px 6px;border-radius:20px}.online-dot{width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;margin-right:8px}.system-msg{text-align:center;font-size:11px;color:#64748b;padding:6px;margin:4px 0}.typing{padding:6px 24px;font-size:11px;color:#64748b;font-style:italic}.input-area{display:flex;gap:12px;padding:12px 20px;background:#fff;border-top:1px solid #eee}body.dark .input-area{background:#1a1a1a;border-color:#333}.input-area input{flex:1;padding:12px 16px;border:2px solid #e2e8f0;border-radius:40px;outline:none;font-size:14px}body.dark .input-area input{background:#2a2a2a;color:#fff;border-color:#444}.input-area button{background:#4f46e5;border:none;border-radius:50%;width:44px;height:44px;color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:transform 0.1s}.input-area button:active{transform:scale(0.95)}.btn-settings,.btn-logout{margin:8px 12px;padding:12px;border-radius:20px;cursor:pointer;border:none;font-weight:500;transition:transform 0.1s}.btn-settings:active,.btn-logout:active{transform:scale(0.97)}.btn-settings{background:#e0e7ff;color:#4f46e5}body.dark .btn-settings{background:#2a2a2a;color:#818cf8}.btn-logout{background:#fee2e2;color:#dc2626}body.dark .btn-logout{background:#2a2a2a;color:#f87171}.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:1000}.modal-content{background:#fff;border-radius:28px;padding:24px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto}body.dark .modal-content{background:#1a1a1a;color:#fff}.modal-content input,.modal-content textarea,.modal-content select{width:100%;padding:12px;margin:8px 0;border-radius:24px;border:1px solid #ddd;outline:none}body.dark .modal-content input,body.dark .modal-content textarea,body.dark .modal-content select{background:#2a2a2a;border-color:#444;color:#fff}.modal-content button{background:#4f46e5;color:#fff;border:none;padding:12px;border-radius:24px;width:100%;cursor:pointer;margin-top:8px;transition:transform 0.1s}.modal-content button:active{transform:scale(0.98)}.close{float:right;font-size:24px;cursor:pointer}.emoji-picker{position:absolute;bottom:80px;left:20px;background:#fff;border-radius:20px;padding:12px;display:none;grid-template-columns:repeat(6,1fr);gap:8px;box-shadow:0 10px 25px rgba(0,0,0,0.15);z-index:1000}body.dark .emoji-picker{background:#1a1a1a}.emoji{font-size:28px;cursor:pointer;text-align:center;padding:6px;border-radius:12px}.notify-btn{position:relative;background:none;border:none;cursor:pointer;font-size:20px;padding:8px;border-radius:50%}.notify-badge{position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;font-size:10px;min-width:18px;height:18px;border-radius:20px;display:none;align-items:center;justify-content:center}.friend-request-item{display:flex;justify-content:space-between;align-items:center;padding:12px;margin:8px 0;background:#f1f5f9;border-radius:20px}body.dark .friend-request-item{background:#2a2a2a}.profile-avatar{width:100px;height:100px;border-radius:50%;margin:0 auto 12px;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden}.profile-avatar img{width:100%;height:100%;object-fit:cover}.profile-name{font-size:20px;font-weight:700;text-align:center;margin-bottom:4px}.profile-role{text-align:center;font-size:12px;color:#6b7280;margin-bottom:8px}.profile-id{text-align:center;font-size:11px;color:#94a3b8;margin-bottom:16px;font-family:monospace;cursor:pointer}.profile-bio{background:#f1f5f9;padding:12px;border-radius:20px;margin:16px 0;font-size:14px}body.dark .profile-bio{background:#2a2a2a}.profile-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.profile-actions button{flex:1;padding:10px;border-radius:24px;border:none;cursor:pointer;font-weight:500;transition:transform 0.1s}.profile-actions button:active{transform:scale(0.97)}.toast{position:fixed;bottom:20px;right:20px;background:#4f46e5;color:#fff;padding:12px 20px;border-radius:40px;z-index:2000;animation:slideIn 0.3s;box-shadow:0 5px 15px rgba(0,0,0,0.2)}@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}.file-message{background:rgba(79,70,229,0.1);padding:6px 10px;border-radius:16px;display:inline-flex;align-items:center;gap:8px}.file-message a{color:#4f46e5;text-decoration:none}.image-preview{max-width:180px;max-height:180px;border-radius:12px;cursor:pointer;margin-top:4px}.audio-player{max-width:200px;margin-top:4px}.report-item{padding:8px;border-bottom:1px solid #ddd;margin:5px 0;background:#f1f5f9;border-radius:16px}@media(max-width:680px){.sidebar{width:240px}.message-content{max-width:75%}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+    <div class="user-card" id="profileBtn">
+        <div class="user-avatar">{% if avatar_base64 %}<img src="{{ avatar_base64 }}">{% else %}👤{% endif %}</div>
+        <div class="user-name">{{ username }}{% if role == "owner" %}<span class="badge-owner"> ВЛ</span>{% elif role == "admin" %}<span class="badge-admin"> АДМ</span>{% elif role == "moderator" %}<span class="badge-moderator"> МОД</span>{% endif %}</div>
+        <div class="user-bio">{{ bio[:40] }}</div>
+        <div class="user-id">ID: {{ user_id }}</div>
+    </div>
+    <div class="section-title">🏠 КОМНАТЫ</div>
+    <div id="roomsList"></div>
+    {% if role in ["owner", "admin"] %}
+    <div class="add-room"><input type="text" id="newRoom" placeholder="Название"><button id="createRoomBtn">+</button></div>
+    {% endif %}
+    <div class="section-title">👥 ОНЛАЙН</div>
+    <div id="usersList"></div>
+    <div class="section-title">👫 ДРУЗЬЯ</div>
+    <div id="friendsList"></div>
+    <div class="section-title">💬 ЛИЧНЫЕ СООБЩЕНИЯ</div>
+    <div id="dmList" class="dm-list"></div>
+    <button class="btn-settings" id="settingsBtn">⚙️ Настройки</button>
+    <button class="btn-logout" id="logoutBtn">🚪 Выйти</button>
 </div>
-<div style="display:flex; gap:8px;">
-    <button class="notify-btn" id="notifyBtn"><span class="notify-badge" id="notifyBadge">0</span>🔔</button>
-    {% if role in ["owner", "admin"] %}<button id="reportsBtn" class="notify-btn" style="background:#f59e0b;">⚠️ Жалобы</button>{% endif %}
-</div>
-"""
-
-# 2. Добавить модальное окно для офлайн пользователей:
-"""
-<div id="offlineModal" class="modal">
-    <div class="modal-content" style="max-width:400px;">
-        <span class="close" id="closeOfflineModal">&times;</span>
-        <h3>👥 Офлайн пользователи</h3>
-        <div id="offlineUsersList"></div>
+<div class="chat-area">
+    <div class="chat-header">
+        <div class="top-bar">
+            <span id="roomName">Главная</span>
+            <span class="users-count" id="regUsersCount">👥 Всего: 0</span>
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button class="notify-btn" id="notifyBtn"><span class="notify-badge" id="notifyBadge">0</span>🔔</button>
+            {% if role in ["owner", "admin"] %}<button id="reportsBtn" class="notify-btn" style="background:#f59e0b;">⚠️ Жалобы</button>{% endif %}
+        </div>
+    </div>
+    <div id="messagesList" class="messages"></div>
+    <div id="typingStatus" class="typing"></div>
+    <div class="input-area">
+        <button id="emojiBtn">😊</button>
+        <button id="fileBtn">📎</button>
+        <button id="voiceBtn">🎙️</button>
+        <input type="text" id="messageInput" placeholder="Сообщение...">
+        <button id="sendBtn">📤</button>
+        <input type="file" id="fileInput" style="display:none" accept="image/*,application/pdf,text/plain">
+        <input type="file" id="avatarFileInput" style="display:none" accept="image/jpeg,image/png">
     </div>
 </div>
-"""
 
-# 3. Добавить полноэкранное окно для личных сообщений (вместо dmModal):
-"""
-<div id="fullscreenDm" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; flex-direction:column;">
-    <div style="padding:15px; background:#1e293b; color:#fff; display:flex; align-items:center; gap:15px;">
-        <button id="closeFullscreenDm" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer;">← Назад</button>
-        <span id="fsDmTargetName" style="font-size:18px;"></span>
-    </div>
-    <div id="fsDmMessages" style="flex:1; overflow-y:auto; padding:20px; background:#0f172a;"></div>
-    <div style="padding:15px; background:#1e293b; display:flex; gap:10px;">
-        <input type="text" id="fsDmInput" placeholder="Сообщение..." style="flex:1; padding:12px; border-radius:40px; border:none;">
-        <button id="fsDmSendBtn" style="background:#4f46e5; color:#fff; border:none; border-radius:40px; padding:12px 20px;">📤</button>
-    </div>
-</div>
-"""
+<!-- Модалки -->
+<div id="emojiPicker" class="emoji-picker"></div>
+<div id="profileModal" class="modal"><div class="modal-content"><span class="close" id="closeProfile">&times;</span><h3>👤 Мой профиль</h3><label>Аватар (изображение):</label><button id="uploadAvatarBtn" style="background:#4f46e5;color:#fff">📷 Загрузить фото</button><div id="avatarPreview" class="profile-avatar" style="width:80px;height:80px;margin:10px auto;"></div><label>О себе:</label><textarea id="bioInput" rows="3">{{ bio }}</textarea><label>Новое имя:</label><input type="text" id="newName"><label>Новый пароль:</label><input type="password" id="newPass"><div id="idChangeInfo"></div><button id="changeIdBtn">🆔 Сменить ID</button><button id="saveProfile">💾 Сохранить</button></div></div>
+<div id="settingsModal" class="modal"><div class="modal-content"><span class="close" id="closeSettings">&times;</span><h3>⚙️ Настройки</h3><button id="themeBtn">🌙 Тёмная тема</button></div></div>
+<div id="notifyModal" class="modal"><div class="modal-content"><span class="close" id="closeNotifyModal">&times;</span><h3>🔔 Уведомления</h3><div id="notificationsList"></div></div></div>
+<div id="userModal" class="modal"><div class="modal-content"><span class="close" id="closeUserModal">&times;</span><div id="userModalContent"></div></div></div>
+<div id="dmModal" class="modal"><div class="modal-content"><span class="close" id="closeDmModal">&times;</span><h3>💬 Чат с <span id="dmTargetName"></span></h3><div id="dmMessages" style="height:300px;overflow-y:auto;background:#f1f5f9;padding:12px;border-radius:20px;margin:12px 0"></div><div style="display:flex;gap:8px"><input type="text" id="dmInput" placeholder="Сообщение..." style="flex:1;padding:12px;border-radius:20px;border:1px solid #ddd"><button id="dmSendBtn" style="background:#4f46e5;color:#fff;border:none;border-radius:20px;padding:10px 20px">📤</button></div></div></div>
+<div id="reportsModal" class="modal"><div class="modal-content"><span class="close" id="closeReportsModal">&times;</span><h3>⚠️ Жалобы пользователей</h3><div id="reportsList"></div></div></div>
+<div id="previewModal" class="modal"><div class="modal-content"><span class="close" id="closePreview">&times;</span><h3>Предпросмотр</h3><div id="previewContent"></div><div style="display:flex;gap:10px;margin-top:16px"><button id="confirmSend" style="background:#10b981;">Отправить</button><button id="cancelSend" style="background:#ef4444;">Отмена</button></div></div></div>
 
-# 4. В JavaScript:
-# - Заменить функцию openDM на открытие полноэкранного окна.
-# - Добавить функцию loadOfflineUsers, которая вызывает /get_offline_users и заполняет список.
-# - Добавить отправку уведомлений на сервер (addNotification должна сохранять через fetch).
-# - Загружать уведомления при старте через /get_notifications.
-# - Получать список офлайн пользователей при клике на кнопку.
-# - Получать список всех пользователей (онлайн+офлайн) через /get_all_users для счётчика.
-# - Добавить обработчик событий online/offline через socket.io.
-# - Добавить обработчик кнопки поддержки (window.location.href = 'mailto:vikogrod@gmail.com').
+<script>
+let socket=io(),currentRoom='Главная',username='{{ username }}',role='{{ role }}',user_id='{{ user_id }}',typingUsers={};
+let notifications=[],pendingFriendRequests=[],currentDMTarget=null;
+let pendingFile=null, pendingFileType=null, pendingVoice=null;
+const msgDiv=document.getElementById('messagesList'),msgInput=document.getElementById('messageInput');
 
-# Полный готовый CHAT_HTML слишком велик, но вы можете использовать ваш текущий HTML и применить эти изменения.
-# Если вам нужен полностью готовый файл, я вышлю его по запросу.
-"""
+function showToast(msg,type='success'){
+    let t=document.createElement('div');t.className='toast';t.style.background=type==='success'?'#10b981':(type==='error'?'#ef4444':'#4f46e5');t.innerHTML=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3000);
+}
+// Тёмная тема
+const savedTheme = localStorage.getItem('chatTheme');
+if(savedTheme === 'dark'){document.body.classList.add('dark');}
+document.getElementById('themeBtn').onclick=()=>{
+    document.body.classList.toggle('dark');
+    localStorage.setItem('chatTheme',document.body.classList.contains('dark')?'dark':'light');
+};
+// Уведомления
+function addNotification(title,text){notifications.unshift({title,text,time:new Date().toLocaleTimeString()});if(notifications.length>20)notifications.pop();updateBadge();updateNotifList();}
+function updateBadge(){let b=document.getElementById('notifyBadge');let c=notifications.length+pendingFriendRequests.length;if(c>0){b.textContent=c>99?'99+':c;b.style.display='flex';}else b.style.display='none';}
+function updateNotifList(){let c=document.getElementById('notificationsList');if(notifications.length===0&&pendingFriendRequests.length===0){c.innerHTML='<p style="color:#6b7280;text-align:center;padding:16px">Нет уведомлений</p>';return;}let h='';pendingFriendRequests.forEach(r=>{h+=`<div class="friend-request-item"><span>📨 Заявка от ${escape(r)}</span><button onclick="acceptReq('${escape(r)}')" style="background:#10b981;border:none;border-radius:20px;padding:6px 14px;color:#fff;cursor:pointer">Принять</button></div>`;});notifications.forEach(n=>{h+=`<div class="friend-request-item"><div><strong>${escape(n.title)}</strong><br><small>${escape(n.text)}</small><br><span style="font-size:10px">${n.time}</span></div></div>`;});c.innerHTML=h;}
+function loadRequests(){fetch('/get_requests').then(r=>r.json()).then(data=>{pendingFriendRequests=data.requests||[];updateBadge();updateNotifList();});}
+document.getElementById('notifyBtn').onclick=()=>{document.getElementById('notifyModal').style.display='flex';updateNotifList();};
+document.getElementById('closeNotifyModal').onclick=()=>document.getElementById('notifyModal').style.display='none';
+// ID смена
+fetch('/id_change_info').then(r=>r.json()).then(data=>{let d=document.getElementById('idChangeInfo');if(data.can_change)d.innerHTML='<p style="color:#10b981;margin:8px 0">✅ Можно сменить ID</p>';else d.innerHTML=`<p style="color:#f59e0b;margin:8px 0">⚠️ Следующая смена ID ${data.next_change_date}</p>`;});
+document.getElementById('changeIdBtn').onclick=()=>{
+    let nid=prompt('Новый ID (4-8 цифр):');
+    if(nid&&/^\\d{4,8}$/.test(nid)){
+        fetch('/change_id',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_id:nid})}).then(r=>r.json()).then(data=>{if(data.success){showToast('✅ ID изменён!','success');setTimeout(()=>location.reload(),1500);}else showToast('❌ '+data.error,'error');});
+    }else showToast('❌ ID должен содержать 4-8 цифр','error');
+};
+// Аватар (только загрузка, без эмодзи)
+let tempAvatarBase64=null;
+document.getElementById('uploadAvatarBtn').onclick=()=>document.getElementById('avatarFileInput').click();
+document.getElementById('avatarFileInput').onchange=function(e){
+    let file=e.target.files[0];
+    if(file&&file.type.startsWith('image/')){
+        let reader=new FileReader();
+        reader.onload=function(ev){
+            tempAvatarBase64=ev.target.result;
+            document.getElementById('avatarPreview').innerHTML=`<img src="${tempAvatarBase64}" style="width:100%;height:100%;object-fit:cover;">`;
+            showToast('✅ Изображение выбрано, сохраните профиль','success');
+        };
+        reader.readAsDataURL(file);
+    }else{showToast('❌ Выберите изображение','error');}
+    e.target.value='';
+};
+// Предпросмотр файлов и голоса
+function showPreview(content, onConfirm){
+    let modal=document.getElementById('previewModal');
+    let previewDiv=document.getElementById('previewContent');
+    previewDiv.innerHTML=content;
+    let confirmBtn=document.getElementById('confirmSend');
+    let cancelBtn=document.getElementById('cancelSend');
+    let newConfirm=confirmBtn.cloneNode(true);
+    let newCancel=cancelBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirm,confirmBtn);
+    cancelBtn.parentNode.replaceChild(newCancel,cancelBtn);
+    newConfirm.onclick=()=>{onConfirm(true);modal.style.display='none';};
+    newCancel.onclick=()=>{onConfirm(false);modal.style.display='none';};
+    modal.style.display='flex';
+}
+// Отправка файла с подтверждением
+document.getElementById('fileBtn').onclick=()=>document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange=function(e){
+    let file=e.target.files[0];
+    if(!file)return;
+    let reader=new FileReader();
+    reader.onload=function(ev){
+        let data=ev.target.result;
+        let isImage=file.type.startsWith('image/');
+        let previewContent='';
+        if(isImage){
+            previewContent=`<img src="${data}" style="max-width:100%;max-height:300px;border-radius:12px;">`;
+        }else{
+            previewContent=`<div class="file-message"><span>📄</span> ${escape(file.name)}</div>`;
+        }
+        showPreview(previewContent, (confirmed)=>{
+            if(confirmed){
+                socket.emit('file_message',{name:file.name,data:data,type:file.type,isImage:isImage,room:currentRoom});
+                showToast('📁 Файл отправлен','success');
+            }else{showToast('❌ Отправка отменена','info');}
+        });
+    };
+    reader.readAsDataURL(file);
+    e.target.value='';
+};
+// Голосовое сообщение с предпросмотром
+let mediaRecorder=null,audioChunks=[],isRecording=false;
+const voiceBtn=document.getElementById('voiceBtn');
+voiceBtn.onclick=async()=>{
+    if(isRecording){
+        mediaRecorder.stop();
+        isRecording=false;
+        voiceBtn.style.background='#4f46e5';
+        showToast('⏹️ Запись остановлена','info');
+    }else{
+        try{
+            const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+            mediaRecorder=new MediaRecorder(stream);
+            audioChunks=[];
+            mediaRecorder.ondataavailable=e=>audioChunks.push(e.data);
+            mediaRecorder.onstop=()=>{
+                const audioBlob=new Blob(audioChunks,{type:'audio/webm'});
+                const reader=new FileReader();
+                reader.onload=()=>{
+                    let audioData=reader.result;
+                    let previewContent=`<audio controls src="${audioData}" style="width:100%"></audio>`;
+                    showPreview(previewContent, (confirmed)=>{
+                        if(confirmed){
+                            socket.emit('voice_message',{data:audioData,room:currentRoom});
+                            showToast('🎤 Голосовое отправлено','success');
+                        }else{showToast('❌ Отправка отменена','info');}
+                    });
+                };
+                reader.readAsDataURL(audioBlob);
+                stream.getTracks().forEach(track=>track.stop());
+            };
+            mediaRecorder.start();
+            isRecording=true;
+            voiceBtn.style.background='#ef4444';
+            showToast('🔴 Запись началась...','info');
+        }catch(err){
+            showToast('❌ Нет доступа к микрофону','error');
+        }
+    }
+};
+// Личные сообщения
+function loadDMList(){fetch('/get_dm_list').then(r=>r.json()).then(data=>{let c=document.getElementById('dmList');if(data.dms&&data.dms.length){c.innerHTML=data.dms.map(d=>`<div class="user-item" onclick="openDM('${escape(d.with)}')"><span>💬 ${escape(d.with)}</span><span style="font-size:10px">${escape(d.last_preview)}</span></div>`).join('');}else c.innerHTML='<div class="user-item">Нет диалогов</div>';});}
+function openDM(t){currentDMTarget=t;document.getElementById('dmTargetName').innerText=t;fetch('/get_dm/'+encodeURIComponent(t)).then(r=>r.json()).then(data=>{let c=document.getElementById('dmMessages');c.innerHTML=data.messages.map(m=>`<div style="margin:8px 0;text-align:${m.from===username?'right':'left'}"><div style="display:inline-block;background:${m.from===username?'#4f46e5':'#e2e8f0'};color:${m.from===username?'#fff':'#1f2937'};padding:8px 12px;border-radius:20px;max-width:80%"><strong>${escape(m.from)}</strong> (${m.time})<br>${escape(m.text)}</div></div>`).join('');c.scrollTop=c.scrollHeight;});document.getElementById('dmModal').style.display='flex';}
+document.getElementById('closeDmModal').onclick=()=>document.getElementById('dmModal').style.display='none';
+document.getElementById('dmSendBtn').onclick=()=>{let txt=document.getElementById('dmInput').value.trim();if(txt&&currentDMTarget){socket.emit('private_message',{target:currentDMTarget,text:txt});document.getElementById('dmInput').value='';}};
+socket.on('private_message',(data)=>{if(data.from===currentDMTarget||data.to===currentDMTarget){let c=document.getElementById('dmMessages');let d=document.createElement('div');d.style=`margin:8px 0;text-align:${data.from===username?'right':'left'}`;d.innerHTML=`<div style="display:inline-block;background:${data.from===username?'#4f46e5':'#e2e8f0'};color:${data.from===username?'#fff':'#1f2937'};padding:8px 12px;border-radius:20px;max-width:80%"><strong>${escape(data.from)}</strong> (${data.time})<br>${escape(data.text)}</div>`;c.appendChild(d);c.scrollTop=c.scrollHeight;}addNotification('Личное сообщение',`${data.from}: ${data.text.substring(0,30)}`);loadDMList();});
+// Эмодзи
+const emojis=['😀','😂','❤️','👍','🎉','🔥','😍','🥹','😭','🤔','👋','🙏','✨','💯','😎','🥳'];
+const picker=document.getElementById('emojiPicker');picker.innerHTML=emojis.map(e=>`<div class="emoji">${e}</div>`).join('');
+document.querySelectorAll('.emoji').forEach(el=>el.onclick=()=>{msgInput.value+=el.textContent;msgInput.focus();picker.style.display='none';});
+document.getElementById('emojiBtn').onclick=(e)=>{e.stopPropagation();picker.style.display=picker.style.display==='grid'?'none':'grid';};
+document.addEventListener('click',(e)=>{if(!e.target.closest('#emojiBtn')&&!e.target.closest('.emoji-picker'))picker.style.display='none';});
+// Профиль пользователя (с новыми кнопками выдачи привилегий)
+function showUserProfile(name){
+    fetch('/user_info/'+encodeURIComponent(name)).then(r=>r.json()).then(data=>{
+        let actions='';
+        // Кнопка "Пожаловаться" для всех
+        actions+=`<button onclick="reportUser('${name}')" style="background:#ef4444;color:#fff">⚠️ Пожаловаться</button>`;
+        if(role==='owner' || role==='admin'){
+            // Выдать привилегию
+            actions+=`<button id="givePrivilegeBtn" style="background:#10b981;color:#fff">⭐ Выдать привилегию</button>`;
+            // Снять привилегию
+            actions+=`<button id="removePrivilegeBtn" style="background:#f59e0b;color:#fff">🔻 Снять привилегию</button>`;
+        }
+        let avatarHtml='';
+        if(data.avatar_base64)avatarHtml=`<img src="${data.avatar_base64}">`;
+        else avatarHtml='👤';
+        document.getElementById('userModalContent').innerHTML=`
+            <div class="profile-avatar">${avatarHtml}</div>
+            <div class="profile-name">${escape(data.username)}</div>
+            <div class="profile-role">${data.role_display}</div>
+            <div class="profile-id" onclick="copyId('${data.user_id}')">🆔 ID: ${escape(data.user_id)} (скопировать)</div>
+            <div class="profile-bio">📝 ${escape(data.bio||'Нет описания')}</div>
+            <div class="profile-actions" id="profileActions">${actions}</div>
+        `;
+        document.getElementById('userModal').style.display='flex';
+        // Привязываем события после вставки
+        if(role==='owner'||role==='admin'){
+            document.getElementById('givePrivilegeBtn').onclick=()=>openPrivilegeModal(name,'give');
+            document.getElementById('removePrivilegeBtn').onclick=()=>openPrivilegeModal(name,'remove');
+        }
+    });
+}
+function reportUser(target){
+    let reason=prompt('Укажите причину жалобы:');
+    if(reason){
+        fetch('/report_user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:target,reason:reason})})
+        .then(r=>r.json()).then(data=>{showToast(data.message,data.success?'success':'error');});
+    }
+}
+function openPrivilegeModal(target,action){
+    let modalHtml=`
+        <div class="modal-content" style="max-width:300px;">
+            <span class="close" id="closePrivilegeModal">&times;</span>
+            <h3>${action==='give'?'Выдать привилегию':'Снять привилегию'}</h3>
+            <select id="roleSelect" style="width:100%;padding:8px;margin:10px 0;">
+                <option value="admin">Администратор</option>
+                <option value="moderator">Модератор</option>
+            </select>
+            <button id="confirmPrivilege">Подтвердить</button>
+        </div>
+    `;
+    let modalDiv=document.createElement('div');modalDiv.className='modal';modalDiv.style.display='flex';modalDiv.innerHTML=modalHtml;
+    document.body.appendChild(modalDiv);
+    modalDiv.querySelector('#closePrivilegeModal').onclick=()=>modalDiv.remove();
+    modalDiv.querySelector('#confirmPrivilege').onclick=()=>{
+        let newRole=modalDiv.querySelector('#roleSelect').value;
+        let url=action==='give'?'/give_role':'/remove_role';
+        fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:target,role:newRole})})
+        .then(r=>r.json()).then(data=>{showToast(data.message,data.success?'success':'error');modalDiv.remove();if(data.success)location.reload();});
+    };
+}
+window.copyId=id=>{navigator.clipboard.writeText(id);showToast('✅ ID скопирован','success');};
+// Жалобы для админов
+document.getElementById('reportsBtn')?.addEventListener('click',()=>{
+    fetch('/get_reports').then(r=>r.json()).then(data=>{
+        let listDiv=document.getElementById('reportsList');
+        if(data.reports.length===0){listDiv.innerHTML='<p>Нет жалоб</p>';}
+        else{
+            listDiv.innerHTML=data.reports.map(r=>`<div class="report-item"><b>От:</b> ${escape(r.from)}<br><b>На:</b> ${escape(r.target)}<br><b>Причина:</b> ${escape(r.reason)}<br><b>Время:</b> ${r.time}<br><button onclick="resolveReport(${r.id})">✅ Разобрано</button></div>`).join('');
+        }
+        document.getElementById('reportsModal').style.display='flex';
+    });
+});
+window.resolveReport=(id)=>{
+    fetch('/resolve_report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json()).then(data=>{showToast(data.message);document.getElementById('reportsBtn').click();});
+};
+document.getElementById('closeReportsModal').onclick=()=>document.getElementById('reportsModal').style.display='none';
+// Обновление списка зарегистрированных пользователей
+function updateRegisteredUsersCount(){
+    fetch('/registered_users_count').then(r=>r.json()).then(data=>{
+        document.getElementById('regUsersCount').innerText=`👥 Всего: ${data.count}`;
+    });
+}
+// Генерация сообщений
+function addAudioMessage(id,name,audioData,time,isOwn,avatar,avatarBase64){
+    let div=document.createElement('div');div.className=`message ${isOwn?'message-own':''}`;div.dataset.id=id;
+    let badge='';if(name==='MrAizex')badge='<span class="badge-owner">ВЛ</span>';else if(name==='dimooon')badge='<span class="badge-admin">АДМ</span>';else if(usersRoles && usersRoles[name]==='moderator')badge='<span class="badge-moderator">МОД</span>';
+    let avatarHtml='';if(avatarBase64)avatarHtml=`<img src="${avatarBase64}">`;else avatarHtml=avatar||'👤';
+    div.innerHTML=`
+        <div class="message-avatar" onclick="showUserProfile('${escape(name)}')">${avatarHtml}</div>
+        <div class="message-content">
+            <div class="message-name">${escape(name)}${badge}</div>
+            <div class="message-text"><audio class="audio-player" controls src="${audioData}"></audio></div>
+            <div class="message-time">${time}</div>
+            <div class="message-actions">
+                ${(isOwn || role==='owner' || role==='admin') ? `<button class="delete-msg" onclick="deleteMessage('${id}')"><i class="fas fa-trash"></i></button>` : ''}
+            </div>
+        </div>
+    `;
+    msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;
+}
+function addMessage(id,name,text,time,isOwn,avatar,avatarBase64,isFile,fileData,fileName,isImage,isVoice,voiceData){
+    let div=document.createElement('div');div.className=`message ${isOwn?'message-own':''}`;div.dataset.id=id;
+    let badge='';if(name==='MrAizex')badge='<span class="badge-owner">ВЛ</span>';else if(name==='dimooon')badge='<span class="badge-admin">АДМ</span>';
+    let avatarHtml='';if(avatarBase64)avatarHtml=`<img src="${avatarBase64}">`;else avatarHtml=avatar||'👤';
+    let content='';
+    if(isVoice){
+        content=`<audio class="audio-player" controls src="${voiceData}"></audio>`;
+    }else if(isFile){
+        if(isImage){content=`<div><img src="${fileData}" class="image-preview" onclick="window.open('${fileData}')"></div>`;}
+        else{content=`<div class="file-message"><span>📄</span><a href="${fileData}" download="${escape(fileName)}">${escape(fileName)}</a></div>`;}
+    }else{content=escape(text);}
+    div.innerHTML=`
+        <div class="message-avatar" onclick="showUserProfile('${escape(name)}')">${avatarHtml}</div>
+        <div class="message-content">
+            <div class="message-name">${escape(name)}${badge}</div>
+            <div class="message-text">${content}</div>
+            <div class="message-time">${time}</div>
+            <div class="message-actions">
+                ${(isOwn || role==='owner' || role==='admin') ? `<button class="delete-msg" onclick="deleteMessage('${id}')"><i class="fas fa-trash"></i></button>` : ''}
+            </div>
+        </div>
+    `;
+    msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;
+}
+function deleteMessage(msgId){
+    socket.emit('delete_message',{messageId:msgId,room:currentRoom});
+    showToast('🗑️ Сообщение удалено','info');
+}
+function escape(s){return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);}
+// Socket events
+socket.emit('join',{room:currentRoom});
+socket.on('history',h=>{msgDiv.innerHTML='';h.forEach(m=>{
+    if(m.voice)addAudioMessage(m.id,m.name,m.voice,m.time,m.name===username,m.avatar,m.avatar_base64);
+    else if(m.file)addMessage(m.id,m.name,'',m.time,m.name===username,m.avatar,m.avatar_base64,true,m.file.data,m.file.name,m.file.isImage);
+    else addMessage(m.id,m.name,m.text,m.time,m.name===username,m.avatar,m.avatar_base64);
+});});
+socket.on('message',m=>{
+    if(m.voice)addAudioMessage(m.id,m.name,m.voice,m.time,m.name===username,m.avatar,m.avatar_base64);
+    else if(m.file)addMessage(m.id,m.name,'',m.time,m.name===username,m.avatar,m.avatar_base64,true,m.file.data,m.file.name,m.file.isImage);
+    else addMessage(m.id,m.name,m.text,m.time,m.name===username,m.avatar,m.avatar_base64);
+});
+socket.on('voice_message',m=>addAudioMessage(m.id,m.name,m.data,m.time,m.name===username,m.avatar,m.avatar_base64));
+socket.on('delete_message',data=>{document.querySelectorAll(`.message[data-id="${data.messageId}"]`).forEach(el=>el.remove());showToast('🗑️ Сообщение удалено','info');});
+socket.on('system',d=>{let sys=document.createElement('div');sys.className='system-msg';sys.textContent=d.text;msgDiv.appendChild(sys);msgDiv.scrollTop=msgDiv.scrollHeight;});
+socket.on('friend_request',data=>{addNotification('Заявка',`${data.from} хочет добавить вас`);loadRequests();});
+socket.on('rooms',l=>{let c=document.getElementById('roomsList');c.innerHTML=l.map(r=>`<div class="room-item ${r===currentRoom?'active':''}" data-room="${r}">🏠 ${escape(r)}${role==='owner'||role==='admin'?`<button class="delete-room" onclick="event.stopPropagation();deleteRoom('${escape(r)}')">🗑</button>`:''}</div>`).join('');document.querySelectorAll('.room-item').forEach(el=>{el.onclick=()=>{let nr=el.dataset.room;if(nr===currentRoom)return;socket.emit('switch',{old:currentRoom,new:nr});currentRoom=nr;document.getElementById('roomName').innerText=currentRoom;document.querySelectorAll('.room-item').forEach(i=>i.classList.remove('active'));el.classList.add('active');msgDiv.innerHTML='<div class="system-msg">⏳ Загрузка...</div>';};});});
+socket.on('users',l=>{let c=document.getElementById('usersList');c.innerHTML=l.map(u=>`<div class="user-item" onclick="showUserProfile('${escape(u.name)}')"><span class="online-dot"></span> ${u.avatar_base64?`<img src="${u.avatar_base64}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">`:u.avatar||'👤'} ${escape(u.name)} ${u.role==='owner'?'<span class="badge-owner">ВЛ</span>':(u.role==='admin'?'<span class="badge-admin">АДМ</span>':(u.role==='moderator'?'<span class="badge-moderator">МОД</span>':''))}</div>`).join('');loadDMList();updateRegisteredUsersCount();});
+socket.on('friends',l=>{let c=document.getElementById('friendsList');if(c)c.innerHTML=l.map(f=>`<div class="user-item" onclick="showUserProfile('${escape(f.name)}')">👫 ${escape(f.name)}</div>`).join('');});
+socket.on('typing',d=>{if(d.typing)typingUsers[d.name]=true;else delete typingUsers[d.name];let n=Object.keys(typingUsers).filter(n=>n!==username);document.getElementById('typingStatus').innerText=n.length?(n.length===1?`${n[0]} печатает...`:`${n.length} человек печатают...`):'';});
+// Отправка текста
+document.getElementById('sendBtn').onclick=()=>{let t=msgInput.value.trim();if(t){socket.emit('message',{text:t,room:currentRoom});msgInput.value='';}};
+msgInput.onkeypress=e=>{if(e.key==='Enter')document.getElementById('sendBtn').click();socket.emit('typing',{room:currentRoom,typing:true});clearTimeout(window.tt);window.tt=setTimeout(()=>socket.emit('typing',{room:currentRoom,typing:false}),1000);};
+// Создание комнаты
+document.getElementById('createRoomBtn')?.addEventListener('click',()=>{let n=document.getElementById('newRoom').value.trim();if(n){socket.emit('create',{room:n});document.getElementById('newRoom').value='';}});
+// Удаление комнаты
+function deleteRoom(roomName){
+    if(roomName==='Главная'){showToast('Нельзя удалить главную комнату','error');return;}
+    if(confirm(`Удалить комнату "${roomName}"?`)){
+        fetch('/delete_room',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:roomName})}).then(r=>r.json()).then(data=>{
+            addSystem(data.message);
+            if(data.success && currentRoom===roomName){
+                socket.emit('switch',{old:currentRoom,new:'Главная'});
+                currentRoom='Главная';
+                document.getElementById('roomName').innerText='Главная';
+            }
+            showToast(data.message,data.success?'success':'error');
+        });
+    }
+}
+function addSystem(t){let d=document.createElement('div');d.className='system-msg';d.textContent=t;msgDiv.appendChild(d);msgDiv.scrollTop=msgDiv.scrollHeight;}
+// Профиль
+document.getElementById('profileBtn').onclick=()=>document.getElementById('profileModal').style.display='flex';
+document.getElementById('settingsBtn').onclick=()=>document.getElementById('settingsModal').style.display='flex';
+document.getElementById('closeProfile').onclick=()=>document.getElementById('profileModal').style.display='none';
+document.getElementById('closeSettings').onclick=()=>document.getElementById('settingsModal').style.display='none';
+document.getElementById('closeUserModal').onclick=()=>document.getElementById('userModal').style.display='none';
+document.getElementById('saveProfile').onclick=()=>{
+    fetch('/update_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        avatar_base64:tempAvatarBase64,
+        bio:document.getElementById('bioInput').value,
+        new_name:document.getElementById('newName').value,
+        new_password:document.getElementById('newPass').value
+    })}).then(r=>r.json()).then(data=>{
+        if(data.success){showToast('✅ Профиль сохранён','success');setTimeout(()=>location.reload(),1000);}
+        else showToast('❌ '+data.error,'error');
+    });
+};
+document.getElementById('logoutBtn').onclick=()=>window.location.href='/logout';
+window.onclick=e=>{
+    if(e.target===document.getElementById('profileModal'))document.getElementById('profileModal').style.display='none';
+    if(e.target===document.getElementById('settingsModal'))document.getElementById('settingsModal').style.display='none';
+    if(e.target===document.getElementById('notifyModal'))document.getElementById('notifyModal').style.display='none';
+    if(e.target===document.getElementById('userModal'))document.getElementById('userModal').style.display='none';
+    if(e.target===document.getElementById('dmModal'))document.getElementById('dmModal').style.display='none';
+    if(e.target===document.getElementById('reportsModal'))document.getElementById('reportsModal').style.display='none';
+    if(e.target===document.getElementById('previewModal'))document.getElementById('previewModal').style.display='none';
+};
+loadRequests();socket.emit('get_rooms');socket.emit('get_users');
+</script>
+</body>
+</html>
+'''
 
-# -------------------------- МАРШРУТЫ (добавленные и существующие) --------------------------
+# -------------------------- МАРШРУТЫ --------------------------
 @app.route('/')
 def index():
     if 'username' not in session: return redirect(url_for('login'))
@@ -378,56 +694,6 @@ def resolve_report():
 def registered_users_count():
     return jsonify({'count': len([u for u in users if not users[u].get('banned')])})
 
-@app.route('/get_all_users')
-def get_all_users():
-    all_users = []
-    for name, u in users.items():
-        if not u.get('banned'):
-            all_users.append({
-                'name': name,
-                'role': u['role'],
-                'avatar_base64': u.get('avatar_base64')
-            })
-    return jsonify(all_users)
-
-@app.route('/get_offline_users')
-def get_offline_users():
-    if 'username' not in session:
-        return jsonify([])
-    offline = []
-    for name, u in users.items():
-        if not u.get('banned') and name not in online_users:
-            offline.append({
-                'name': name,
-                'role': u['role'],
-                'avatar_base64': u.get('avatar_base64')
-            })
-    return jsonify(offline)
-
-@app.route('/get_notifications')
-def get_notifications():
-    if 'username' not in session:
-        return jsonify([])
-    return jsonify(load_user_notifications(session['username']))
-
-@app.route('/add_notification', methods=['POST'])
-def add_notification():
-    if 'username' not in session:
-        return jsonify({'status': 'error'})
-    data = request.json
-    title = data.get('title')
-    text = data.get('text')
-    notif = {
-        'title': title,
-        'text': text,
-        'time': datetime.now().strftime('%H:%M:%S')
-    }
-    notifs = load_user_notifications(session['username'])
-    notifs.insert(0, notif)
-    save_user_notifications(session['username'], notifs)
-    return jsonify({'status': 'ok'})
-
-# -------------------------- ОСТАЛЬНЫЕ МАРШРУТЫ (друзья и т.д.) --------------------------
 @app.route('/give_admin', methods=['POST'])
 def give_admin():
     if 'username' not in session or users[session['username']]['role']!='owner': return jsonify({'message': 'Только владелец'})
@@ -539,19 +805,7 @@ def get_dm(target):
     name = session['username']; key = f"{min(name,target)}_{max(name,target)}"
     return jsonify({'messages': dms.get(key, [])})
 
-# -------------------------- SOCKET.IO ОБРАБОТЧИКИ --------------------------
-@socketio.on('connect')
-def handle_connect():
-    if 'username' in session:
-        online_users.add(session['username'])
-        emit('update_online_users', list(online_users), broadcast=True)
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    if 'username' in session:
-        online_users.discard(session['username'])
-        emit('update_online_users', list(online_users), broadcast=True)
-
+# -------------------------- SOCKET.IO --------------------------
 @socketio.on('private_message')
 def private_message(data):
     username = session.get('username')
@@ -624,8 +878,6 @@ def on_join(data):
     username = session.get('username')
     if not username or users.get(username,{}).get('banned'): return
     room = data['room']; join_room(room); emit('history', messages.get(room, []), to=request.sid)
-    # также отправить текущий список онлайн пользователей для синхронизации
-    emit('update_online_users', list(online_users), to=request.sid)
 
 @socketio.on('message')
 def on_message(data):
