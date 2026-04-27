@@ -234,4 +234,5 @@ def user_info(name):
     return jsonify({
         'username': name,
         'bio': u.get('bio', ''),
-        'role_display': {'owner': 'Владелец', 'admin': 'Ад
+        'role_display': {'owner': 'Владелец', 'admin': 'Ад'}
+        
