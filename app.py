@@ -48,18 +48,91 @@ users = load_users()
 messages = load_messages()
 rooms = load_rooms()
 
-LOGIN_HTML = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Чатик</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-radius:48px;padding:48px;max-width:400px;width:100%;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}h1{margin-bottom:8px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.subtitle{color:#6b7280;margin-bottom:32px}input{width:100%;padding:16px;border:2px solid #e5e7eb;border-radius:32px;margin-bottom:16px;font-size:16px;outline:none}input:focus{border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1)}button{width:100%;padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:32px;font-size:16px;font-weight:600;cursor:pointer;transition:transform 0.2s}button:hover{transform:translateY(-2px)}.error{background:#fee2e2;color:#dc2626;padding:12px;border-radius:24px;margin-bottom:20px}.footer{margin-top:24px;color:#6b7280}a{color:#667eea;text-decoration:none}</style></head><body><div class="card"><h1>💬 Чатик</h1><div class="subtitle">Общайся с друзьями</div>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="post"><input type="text" name="username" placeholder="Имя" required autofocus><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form><div class="footer">Нет аккаунта? <a href="/register">Регистрация</a></div></div></body></html>'
+LOGIN_HTML = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"><title>Чатик</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-radius:48px;padding:32px 24px;max-width:400px;width:100%;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}h1{margin-bottom:8px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:28px}.subtitle{color:#6b7280;margin-bottom:24px;font-size:14px}input{width:100%;padding:14px 16px;border:2px solid #e5e7eb;border-radius:32px;margin-bottom:12px;font-size:16px;outline:none}input:focus{border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1)}button{width:100%;padding:14px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:32px;font-size:16px;font-weight:600;cursor:pointer;transition:transform 0.2s}button:hover{transform:translateY(-2px)}.error{background:#fee2e2;color:#dc2626;padding:12px;border-radius:24px;margin-bottom:20px;font-size:14px}.footer{margin-top:20px;color:#6b7280;font-size:14px}a{color:#667eea;text-decoration:none}</style></head><body><div class="card"><h1>💬 Чатик</h1><div class="subtitle">Общайся с друзьями</div>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="post"><input type="text" name="username" placeholder="Имя" required autofocus><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form><div class="footer">Нет аккаунта? <a href="/register">Регистрация</a></div></div></body></html>'
 
-REGISTER_HTML = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Регистрация</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-radius:48px;padding:48px;max-width:400px;width:100%;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}h1{text-align:center;margin-bottom:32px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}input{width:100%;padding:16px;border:2px solid #e5e7eb;border-radius:32px;margin-bottom:16px;font-size:16px;outline:none}input:focus{border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1)}button{width:100%;padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:32px;font-size:16px;font-weight:600;cursor:pointer;transition:transform 0.2s}button:hover{transform:translateY(-2px)}.error{background:#fee2e2;color:#dc2626;padding:12px;border-radius:24px;margin-bottom:20px;text-align:center}.footer{text-align:center;margin-top:24px;color:#6b7280}a{color:#667eea;text-decoration:none}</style></head><body><div class="card"><h1>📝 Регистрация</h1>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="post"><input type="text" name="username" placeholder="Имя (3-20)" required autofocus><input type="password" name="password" placeholder="Пароль (мин 4)" required><button type="submit">Создать</button></form><div class="footer">Уже есть? <a href="/login">Войти</a></div></div></body></html>'
+REGISTER_HTML = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"><title>Регистрация</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-radius:48px;padding:32px 24px;max-width:400px;width:100%;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}h1{text-align:center;margin-bottom:24px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:28px}input{width:100%;padding:14px 16px;border:2px solid #e5e7eb;border-radius:32px;margin-bottom:12px;font-size:16px;outline:none}input:focus{border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1)}button{width:100%;padding:14px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:32px;font-size:16px;font-weight:600;cursor:pointer;transition:transform 0.2s}button:hover{transform:translateY(-2px)}.error{background:#fee2e2;color:#dc2626;padding:12px;border-radius:24px;margin-bottom:20px;font-size:14px;text-align:center}.footer{text-align:center;margin-top:20px;color:#6b7280;font-size:14px}a{color:#667eea;text-decoration:none}</style></head><body><div class="card"><h1>📝 Регистрация</h1>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="post"><input type="text" name="username" placeholder="Имя (3-20)" required autofocus><input type="password" name="password" placeholder="Пароль (мин 4)" required><button type="submit">Создать</button></form><div class="footer">Уже есть? <a href="/login">Войти</a></div></div></body></html>'
 
 CHAT_HTML = '''<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Чатик · {{ username }}</title><script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script><style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#1e1b4b,#4c1d95);height:100vh;display:flex}body.dark{background:#0f172a}.sidebar{width:280px;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-right:1px solid rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow-y:auto}body.dark .sidebar{background:#1e293b;color:#fff}.user-card{text-align:center;padding:24px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer}.user-avatar{font-size:64px}.user-name{font-size:18px;font-weight:700}.user-bio{font-size:12px}.section-title{font-weight:600;padding:16px 20px 8px 20px;color:#475569;font-size:12px;text-transform:uppercase}body.dark .section-title{color:#94a3b8}.room-item,.user-item{padding:12px 20px;margin:4px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:all 0.2s}.room-item:hover,.user-item:hover{background:rgba(0,0,0,0.05)}body.dark .room-item:hover,body.dark .user-item:hover{background:rgba(255,255,255,0.05)}.room-item.active{background:#4f46e5;color:#fff}.add-room{display:flex;gap:8px;margin:12px}.add-room input{flex:1;padding:10px;border-radius:40px;border:1px solid #ddd;outline:none}body.dark .add-room input{background:#334155;color:#fff;border-color:#475569}.add-room button{background:#4f46e5;color:#fff;border:none;border-radius:40px;padding:8px 20px;cursor:pointer}.chat-area{flex:1;display:flex;flex-direction:column;background:#fff}body.dark .chat-area{background:#0f172a}.chat-header{padding:20px 24px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between}body.dark .chat-header{background:#1e293b;color:#fff}.messages{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px}.message{display:flex;gap:12px;align-items:flex-start}.message-own{justify-content:flex-end}.message-avatar{width:40px;height:40px;background:#4f46e5;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer}.message-content{background:#f1f5f9;padding:10px 16px;border-radius:20px;max-width:65%}body.dark .message-content{background:#334155;color:#fff}.message-own .message-content{background:#4f46e5;color:#fff}.message-name{font-weight:700;font-size:13px}.message-time{font-size:10px;opacity:0.6}.message-text{margin-top:4px}.badge-owner{background:#ef4444;font-size:9px;padding:2px 8px;border-radius:20px;margin-left:6px}.badge-admin{background:#10b981;font-size:9px;padding:2px 8px;border-radius:20px;margin-left:6px}.online-dot{width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;margin-right:6px}.system-msg{text-align:center;font-size:12px;color:#64748b;padding:8px}.typing{padding:8px 24px;font-size:12px;color:#64748b;font-style:italic}.input-area{display:flex;gap:12px;padding:20px 24px;background:#fff;border-top:1px solid #e2e8f0}body.dark .input-area{background:#1e293b}.input-area input{flex:1;padding:14px 20px;border:2px solid #e2e8f0;border-radius:40px;outline:none}body.dark .input-area input{background:#334155;color:#fff;border-color:#475569}.input-area button{background:#4f46e5;border:none;border-radius:50%;width:48px;height:48px;color:#fff;cursor:pointer}.btn-settings,.btn-logout{margin:8px 12px;padding:12px;border-radius:20px;cursor:pointer;border:none}.btn-settings{background:#e0e7ff;color:#4f46e5}.btn-logout{background:#fee2e2;color:#dc2626}body.dark .btn-settings{background:#334155;color:#818cf8}body.dark .btn-logout{background:#334155;color:#f87171}.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:1000}.modal-content{background:#fff;border-radius:32px;padding:32px;max-width:400px;width:90%}body.dark .modal-content{background:#1e293b;color:#fff}.modal-content input,.modal-content textarea{width:100%;padding:12px;margin:10px 0;border-radius:24px;border:1px solid #ddd}.modal-content button{background:#4f46e5;color:#fff;border:none;padding:12px;border-radius:24px;width:100%;cursor:pointer}.close{float:right;font-size:28px;cursor:pointer}.user-menu{position:fixed;background:#fff;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,0.1);padding:8px;z-index:1000;display:none;min-width:180px}body.dark .user-menu{background:#1e293b}.user-menu button{width:100%;padding:10px 16px;border:none;background:none;text-align:left;cursor:pointer;border-radius:12px;font-size:14px}.user-menu button:hover{background:#f1f5f9}body.dark .user-menu button:hover{background:#334155;color:#fff}.emoji-picker{position:absolute;bottom:80px;left:20px;background:#fff;border-radius:20px;padding:12px;display:none;grid-template-columns:repeat(6,1fr);gap:8px;box-shadow:0 10px 25px rgba(0,0,0,0.1);z-index:1000}body.dark .emoji-picker{background:#1e293b}.emoji{font-size:24px;cursor:pointer;text-align:center;padding:5px;border-radius:12px}.emoji:hover{background:#f1f5f9}@media(max-width:680px){.sidebar{width:260px}}
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"><title>Чатик · {{ username }}</title><script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script><style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:system-ui;background:linear-gradient(135deg,#1e1b4b,#4c1d95);height:100vh;display:flex;overflow:hidden}
+body.dark{background:#0f172a}
+.sidebar{position:fixed;top:0;left:-280px;width:280px;height:100%;background:rgba(255,255,255,0.98);backdrop-filter:blur(10px);border-right:1px solid rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow-y:auto;z-index:1000;transition:left 0.3s ease;box-shadow:2px 0 10px rgba(0,0,0,0.1)}
+body.dark .sidebar{background:#1e293b;color:#fff}
+.sidebar.open{left:0}
+.sidebar-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;display:none}
+.user-card{text-align:center;padding:24px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer}
+.user-avatar{font-size:56px}
+.user-name{font-size:18px;font-weight:700}
+.user-bio{font-size:11px;opacity:0.85;margin-top:4px}
+.section-title{font-weight:600;padding:16px 20px 8px 20px;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}
+body.dark .section-title{color:#94a3b8}
+.room-item,.user-item{padding:12px 20px;margin:4px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:all 0.2s}
+.room-item:active,.user-item:active{background:rgba(0,0,0,0.1);transform:scale(0.98)}
+.room-item:hover,.user-item:hover{background:rgba(0,0,0,0.05)}
+body.dark .room-item:hover,body.dark .user-item:hover{background:rgba(255,255,255,0.05)}
+.room-item.active{background:#4f46e5;color:#fff}
+.add-room{display:flex;gap:8px;margin:12px}
+.add-room input{flex:1;padding:10px;border-radius:40px;border:1px solid #ddd;outline:none;font-size:14px}
+body.dark .add-room input{background:#334155;color:#fff;border-color:#475569}
+.add-room button{background:#4f46e5;color:#fff;border:none;border-radius:40px;padding:8px 16px;cursor:pointer;font-size:14px}
+.chat-area{flex:1;display:flex;flex-direction:column;background:#fff;width:100%}
+body.dark .chat-area{background:#0f172a}
+.chat-header{padding:12px 16px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
+body.dark .chat-header{background:#1e293b;color:#fff}
+.menu-btn{font-size:24px;background:none;border:none;cursor:pointer;padding:8px;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.menu-btn:active{background:rgba(0,0,0,0.1)}
+.messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
+.message{display:flex;gap:10px;align-items:flex-start;animation:fadeIn 0.2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.message-own{justify-content:flex-end}
+.message-avatar{width:40px;height:40px;background:#4f46e5;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;flex-shrink:0}
+.message-content{background:#f1f5f9;padding:10px 14px;border-radius:20px;max-width:75%;word-break:break-word}
+body.dark .message-content{background:#334155;color:#fff}
+.message-own .message-content{background:#4f46e5;color:#fff}
+.message-name{font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.message-time{font-size:9px;opacity:0.6;margin-left:6px}
+.message-text{margin-top:4px;font-size:14px;line-height:1.4;word-break:break-word}
+.badge-owner{background:#ef4444;font-size:8px;padding:2px 6px;border-radius:20px}
+.badge-admin{background:#10b981;font-size:8px;padding:2px 6px;border-radius:20px}
+.online-dot{width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;margin-right:8px}
+.system-msg{text-align:center;font-size:11px;color:#64748b;padding:6px;margin:4px 0}
+.typing{padding:6px 16px;font-size:11px;color:#64748b;font-style:italic}
+.input-area{display:flex;gap:8px;padding:12px 16px;background:#fff;border-top:1px solid #e2e8f0}
+body.dark .input-area{background:#1e293b}
+.input-area input{flex:1;padding:12px 16px;border:2px solid #e2e8f0;border-radius:40px;outline:none;font-size:14px}
+body.dark .input-area input{background:#334155;color:#fff;border-color:#475569}
+.input-area button{background:#4f46e5;border:none;border-radius:50%;width:44px;height:44px;color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center}
+.input-area button:active{transform:scale(0.95)}
+.btn-settings,.btn-logout{margin:8px 12px;padding:12px;border-radius:20px;cursor:pointer;border:none;font-size:14px;font-weight:500}
+.btn-settings{background:#e0e7ff;color:#4f46e5}
+.btn-logout{background:#fee2e2;color:#dc2626}
+body.dark .btn-settings{background:#334155;color:#818cf8}
+body.dark .btn-logout{background:#334155;color:#f87171}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:2000}
+.modal-content{background:#fff;border-radius:28px;padding:24px;max-width:340px;width:90%;max-height:80vh;overflow-y:auto}
+body.dark .modal-content{background:#1e293b;color:#fff}
+.modal-content input,.modal-content textarea{width:100%;padding:12px;margin:8px 0;border-radius:24px;border:1px solid #ddd;outline:none;font-size:14px}
+body.dark .modal-content input,body.dark .modal-content textarea{background:#334155;border-color:#475569;color:#fff}
+.modal-content button{background:#4f46e5;color:#fff;border:none;padding:12px;border-radius:24px;width:100%;cursor:pointer;margin-top:8px;font-size:14px;font-weight:500}
+.close{float:right;font-size:26px;cursor:pointer;line-height:20px}
+.user-menu{position:fixed;background:#fff;border-radius:20px;box-shadow:0 10px 25px rgba(0,0,0,0.15);padding:8px;z-index:2000;display:none;min-width:170px}
+body.dark .user-menu{background:#1e293b}
+.user-menu button{width:100%;padding:12px 16px;border:none;background:none;text-align:left;cursor:pointer;border-radius:14px;font-size:14px}
+.user-menu button:active{background:rgba(0,0,0,0.1)}
+.user-menu button:hover{background:#f1f5f9}
+body.dark .user-menu button:hover{background:#334155;color:#fff}
+.emoji-picker{position:fixed;bottom:70px;left:16px;right:16px;background:#fff;border-radius:24px;padding:12px;display:none;grid-template-columns:repeat(6,1fr);gap:8px;box-shadow:0 10px 25px rgba(0,0,0,0.15);z-index:2000;max-width:320px}
+body.dark .emoji-picker{background:#1e293b}
+.emoji{font-size:28px;cursor:pointer;text-align:center;padding:6px;border-radius:12px}
+.emoji:active{background:#f1f5f9;transform:scale(0.9)}
+@media(min-width:768px){.sidebar{position:relative;left:0 !important;width:260px;display:flex !important}.sidebar-overlay{display:none !important}.menu-btn{display:none}}
 </style>
 </head>
 <body>
-<div class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="sidebar" id="sidebar">
     <div class="user-card" id="profileBtn">
         <div class="user-avatar">{{ avatar }}</div>
         <div class="user-name">{{ username }}{% if role == "owner" %}<span class="badge-owner"> ВЛ</span>{% elif role == "admin" %}<span class="badge-admin"> АДМ</span>{% endif %}</div>
@@ -78,26 +151,38 @@ CHAT_HTML = '''<!DOCTYPE html>
     <button class="btn-logout" id="logoutBtn">🚪 Выйти</button>
 </div>
 <div class="chat-area">
-    <div class="chat-header"><span><strong>#</strong> <span id="roomName">Главная</span></span><span id="onlineCount"></span></div>
+    <div class="chat-header">
+        <button class="menu-btn" id="menuBtn">☰</button>
+        <span><strong>#</strong> <span id="roomName">Главная</span></span>
+        <span id="onlineCount" style="font-size:13px;"></span>
+    </div>
     <div id="messagesList" class="messages"></div>
     <div id="typingStatus" class="typing"></div>
-    <div class="input-area"><button id="emojiBtn">😊</button><input type="text" id="messageInput" placeholder="Сообщение..."><button id="sendBtn">📤</button></div>
+    <div class="input-area">
+        <button id="emojiBtn">😊</button>
+        <input type="text" id="messageInput" placeholder="Сообщение...">
+        <button id="sendBtn">📤</button>
+    </div>
 </div>
 
 <div id="emojiPicker" class="emoji-picker"></div>
-<div id="profileModal" class="modal"><div class="modal-content"><span class="close" id="closeProfile">&times;</span><h3>👤 Профиль</h3><label>Аватар (эмодзи):</label><input type="text" id="avatarInput" maxlength="2" placeholder="😀"><label>О себе:</label><textarea id="bioInput" rows="3">{{ bio }}</textarea><label>Новое имя:</label><input type="text" id="newName" placeholder="Новое имя"><label>Новый пароль:</label><input type="password" id="newPass" placeholder="Новый пароль"><button id="saveProfile">💾 Сохранить</button></div></div>
-<div id="settingsModal" class="modal"><div class="modal-content"><span class="close" id="closeSettings">&times;</span><h3>⚙️ Настройки</h3><button id="themeBtn">🌙 Тёмная тема</button><h4 style="margin-top:20px">📨 ЗАЯВКИ В ДРУЗЬЯ</h4><div id="requestsList"></div><h4 style="margin-top:20px">👑 КОМАНДЫ</h4><p style="font-size:12px">• <code>/giveadmin ИМЯ</code> — выдать админку</p><p style="font-size:12px">• <code>/unadmin ИМЯ</code> — снять админку</p></div></div>
+<div id="profileModal" class="modal"><div class="modal-content"><span class="close" id="closeProfile">&times;</span><h3 style="margin-bottom:16px">👤 Профиль</h3><label>Аватар (эмодзи):</label><input type="text" id="avatarInput" maxlength="2" placeholder="😀"><label>О себе:</label><textarea id="bioInput" rows="3">{{ bio }}</textarea><label>Новое имя:</label><input type="text" id="newName" placeholder="Новое имя"><label>Новый пароль:</label><input type="password" id="newPass" placeholder="Новый пароль"><button id="saveProfile">💾 Сохранить</button></div></div>
+<div id="settingsModal" class="modal"><div class="modal-content"><span class="close" id="closeSettings">&times;</span><h3 style="margin-bottom:16px">⚙️ Настройки</h3><button id="themeBtn" style="margin-bottom:16px">🌙 Тёмная тема</button><h4 style="margin-bottom:8px">📨 ЗАЯВКИ В ДРУЗЬЯ</h4><div id="requestsList"></div><h4 style="margin:16px 0 8px">👑 КОМАНДЫ</h4><p style="font-size:12px;margin:4px 0">• <code>/giveadmin ИМЯ</code> — выдать админку</p><p style="font-size:12px">• <code>/unadmin ИМЯ</code> — снять админку</p></div></div>
 <div id="userMenu" class="user-menu"></div>
 
 <script>
 let socket=io(),currentRoom='Главная',username='{{ username }}',role='{{ role }}',dark=false,typingUsers={},currentMenuUser=null;
 const msgDiv=document.getElementById('messagesList'),msgInput=document.getElementById('messageInput');
+const sidebar=document.getElementById('sidebar'),overlay=document.getElementById('sidebarOverlay');
+document.getElementById('menuBtn').onclick=()=>{sidebar.classList.add('open');overlay.style.display='block';};
+overlay.onclick=()=>{sidebar.classList.remove('open');overlay.style.display='none';};
+if(window.innerWidth>768){sidebar.classList.add('open');overlay.style.display='none';}
 const emojis=['😀','😂','❤️','👍','🎉','🔥','😍','🥹','😭','🤔','👋','🙏','✨','💯','😎','🥳'];
 const picker=document.getElementById('emojiPicker');
 picker.innerHTML=emojis.map(e=>`<div class="emoji">${e}</div>`).join('');
 document.querySelectorAll('.emoji').forEach(el=>el.onclick=()=>{msgInput.value+=el.textContent;msgInput.focus();picker.style.display='none';});
-document.getElementById('emojiBtn').onclick=()=>picker.style.display=picker.style.display==='grid'?'none':'grid';
-document.addEventListener('click',e=>{if(!e.target.closest('#emojiBtn')&&!e.target.closest('.emoji-picker'))picker.style.display='none';if(!e.target.closest('.user-item')&&!e.target.closest('.user-menu')){document.getElementById('userMenu').style.display='none';currentMenuUser=null;}});
+document.getElementById('emojiBtn').onclick=(e)=>{e.stopPropagation();picker.style.display=picker.style.display==='grid'?'none':'grid';};
+document.addEventListener('click',(e)=>{if(!e.target.closest('#emojiBtn')&&!e.target.closest('.emoji-picker'))picker.style.display='none';if(!e.target.closest('.user-item')&&!e.target.closest('.message-avatar')&&!e.target.closest('.user-menu')){document.getElementById('userMenu').style.display='none';currentMenuUser=null;}});
 function showUserMenu(name,x,y){
     let menu=document.getElementById('userMenu');
     if(currentMenuUser===name&&menu.style.display==='block'){menu.style.display='none';currentMenuUser=null;return;}
@@ -106,24 +191,24 @@ function showUserMenu(name,x,y){
         if(!data.is_friend&&name!==username)menu.innerHTML+=`<button onclick="addFriend('${name}')">➕ В друзья</button>`;
         if(data.is_friend)menu.innerHTML+=`<button onclick="removeFriend('${name}')">❌ Удалить из друзей</button>`;
         if(role==='owner'||role==='admin')menu.innerHTML+=`<button onclick="giveAdmin('${name}')">⭐ Выдать админку</button>`;
-        menu.style.display='block';menu.style.left=x+'px';menu.style.top+y+'px';currentMenuUser=name;
-        setTimeout(()=>{if(menu.style.display==='block'){menu.style.display='none';currentMenuUser=null;}},5000);
+        menu.style.display='block';menu.style.left=x+'px';menu.style.top=y+'px';currentMenuUser=name;
+        setTimeout(()=>{if(menu.style.display==='block'){menu.style.display='none';currentMenuUser=null;}},4000);
     });
 }
 window.viewProfile=name=>fetch('/user_info/'+encodeURIComponent(name)).then(r=>r.json()).then(data=>alert(`${data.username}\n📝 ${data.bio||'Нет описания'}\n👫 Друзья: ${data.friends_count}\n⭐ ${data.role_display}`));
 window.addFriend=name=>{fetch('/add_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>addSystem(data.message));document.getElementById('userMenu').style.display='none';};
 window.removeFriend=name=>{fetch('/remove_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>addSystem(data.message));document.getElementById('userMenu').style.display='none';};
 window.giveAdmin=name=>{fetch('/give_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})}).then(r=>r.json()).then(data=>addSystem(data.message));document.getElementById('userMenu').style.display='none';};
-function loadRequests(){fetch('/get_requests').then(r=>r.json()).then(data=>{let d=document.getElementById('requestsList');if(data.requests&&data.requests.length){d.innerHTML=data.requests.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;padding:8px;background:#f1f5f9;border-radius:16px;"><span>📨 ${escape(r)}</span><button onclick="acceptReq('${escape(r)}')" style="background:#10b981;border:none;border-radius:20px;padding:6px 16px;color:#fff;cursor:pointer;">Принять</button></div>`).join('');}else d.innerHTML='<p style="color:#6b7280;">Нет заявок</p>';});}
+function loadRequests(){fetch('/get_requests').then(r=>r.json()).then(data=>{let d=document.getElementById('requestsList');if(data.requests&&data.requests.length){d.innerHTML=data.requests.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;padding:10px;background:#f1f5f9;border-radius:20px;"><span>📨 ${escape(r)}</span><button onclick="acceptReq('${escape(r)}')" style="background:#10b981;border:none;border-radius:20px;padding:6px 14px;color:#fff;cursor:pointer;font-size:13px">Принять</button></div>`).join('');}else d.innerHTML='<p style="color:#6b7280;text-align:center;padding:16px">Нет заявок</p>';});}
 window.acceptReq=name=>{fetch('/accept_friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({friend:name})}).then(r=>r.json()).then(data=>{addSystem(data.message);loadRequests();});};
-function addMessage(id,name,text,time,isOwn,avatar){let div=document.createElement('div');div.className=`message ${isOwn?'message-own':''}`;div.innerHTML=`<div class="message-avatar" onclick="showUserMenu('${escape(name)}', event.clientX, event.clientY)">${avatar||'👤'}</div><div class="message-content"><div class="message-name">${escape(name)}<span class="message-time">${time}</span></div><div>${escape(text)}</div></div>`;msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;}
+function addMessage(id,name,text,time,isOwn,avatar){let div=document.createElement('div');div.className=`message ${isOwn?'message-own':''}`;div.innerHTML=`<div class="message-avatar" onclick="showUserMenu('${escape(name)}', event.clientX, event.clientY)">${avatar||'👤'}</div><div class="message-content"><div class="message-name">${escape(name)}<span class="message-time">${time}</span></div><div class="message-text">${escape(text)}</div></div>`;msgDiv.appendChild(div);msgDiv.scrollTop=msgDiv.scrollHeight;}
 function addSystem(t){let d=document.createElement('div');d.className='system-msg';d.textContent=t;msgDiv.appendChild(d);msgDiv.scrollTop=msgDiv.scrollHeight;}
 function escape(s){return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);}
 socket.emit('join',{room:currentRoom});
 socket.on('history',h=>{msgDiv.innerHTML='';h.forEach(m=>addMessage(m.id,m.name,m.text,m.time,m.name===username,m.avatar));});
 socket.on('message',m=>addMessage(m.id,m.name,m.text,m.time,m.name===username,m.avatar));
 socket.on('system',d=>addSystem(d.text));
-socket.on('rooms',l=>{let c=document.getElementById('roomsList');c.innerHTML=l.map(r=>`<div class="room-item ${r===currentRoom?'active':''}" data-room="${r}">🏠 ${escape(r)}</div>`).join('');document.querySelectorAll('.room-item').forEach(el=>{el.onclick=()=>{let nr=el.dataset.room;if(nr===currentRoom)return;socket.emit('switch',{old:currentRoom,new:nr});currentRoom=nr;document.getElementById('roomName').innerText=currentRoom;document.querySelectorAll('.room-item').forEach(i=>i.classList.remove('active'));el.classList.add('active');msgDiv.innerHTML='<div class="system-msg">⏳ Загрузка...</div>';};});});
+socket.on('rooms',l=>{let c=document.getElementById('roomsList');c.innerHTML=l.map(r=>`<div class="room-item ${r===currentRoom?'active':''}" data-room="${r}">🏠 ${escape(r)}</div>`).join('');document.querySelectorAll('.room-item').forEach(el=>{el.onclick=()=>{let nr=el.dataset.room;if(nr===currentRoom)return;socket.emit('switch',{old:currentRoom,new:nr});currentRoom=nr;document.getElementById('roomName').innerText=currentRoom;document.querySelectorAll('.room-item').forEach(i=>i.classList.remove('active'));el.classList.add('active');msgDiv.innerHTML='<div class="system-msg">⏳ Загрузка...</div>';if(window.innerWidth<768){sidebar.classList.remove('open');overlay.style.display='none';}};});});});
 socket.on('users',l=>{let c=document.getElementById('usersList');c.innerHTML=l.map(u=>`<div class="user-item" onclick="showUserMenu('${escape(u.name)}', event.clientX, event.clientY)"><span class="online-dot"></span> ${u.avatar||'👤'} ${escape(u.name)} ${u.role==='owner'?'<span class="badge-owner">ВЛ</span>':(u.role==='admin'?'<span class="badge-admin">АДМ</span>':'')}</div>`).join('');document.getElementById('onlineCount').innerText=`👥 ${l.length}`;});
 socket.on('friends',l=>{let c=document.getElementById('friendsList');if(c)c.innerHTML=l.map(f=>`<div class="user-item" onclick="viewProfile('${escape(f.name)}')">👫 ${escape(f.name)}</div>`).join('');});
 socket.on('typing',d=>{if(d.typing)typingUsers[d.name]=true;else delete typingUsers[d.name];let n=Object.keys(typingUsers).filter(n=>n!==username);document.getElementById('typingStatus').innerText=n.length?(n.length===1?`${n[0]} печатает...`:`${n.length} человек печатают...`):'';});
