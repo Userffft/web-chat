@@ -6,7 +6,6 @@ import base64
 from datetime import datetime, timedelta
 from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
-from authlib.integrations.flask_client import OAuth
 
 # -------------------------- НАСТРОЙКИ --------------------------
 DB_PATH = 'db'
@@ -20,21 +19,6 @@ DMS_FILE = os.path.join(DB_PATH, 'dms.json')
 app = Flask(__name__)
 app.secret_key = 'secret-key-2024'
 socketio = SocketIO(app, cors_allowed_origins="*")
-
-# -------------------------- OAuth Google --------------------------
-oauth = OAuth(app)
-google = oauth.register(
-    name='google',
-    client_id=os.environ.get('GOOGLE_CLIENT_ID', 'your-google-client-id'),
-    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET', 'your-google-secret'),
-    access_token_url='https://accounts.google.com/o/oauth2/token',
-    access_token_params=None,
-    authorize_url='https://accounts.google.com/o/oauth2/auth',
-    authorize_params=None,
-    api_base_url='https://www.googleapis.com/oauth2/v1/',
-    client_kwargs={'scope': 'openid email profile'},
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
-)
 
 # -------------------------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ --------------------------
 def generate_short_id():
@@ -58,8 +42,7 @@ def load_users():
             'user_id': generate_short_id(),
             'id_change_count': 0,
             'last_id_change': None,
-            'muted_until': None,
-            'email': None
+            'muted_until': None
         },
         'dimooon': {
             'password': hashlib.sha256('1111'.encode()).hexdigest(),
@@ -74,8 +57,7 @@ def load_users():
             'user_id': generate_short_id(),
             'id_change_count': 0,
             'last_id_change': None,
-            'muted_until': None,
-            'email': None
+            'muted_until': None
         }
     }
 
@@ -123,11 +105,11 @@ LOGIN_HTML = '''<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"><title>Чатик</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:rgba(255,255,255,0.95);border-radius:48px;padding:40px;max-width:400px;width:100%;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}h1{margin-bottom:8px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.subtitle{color:#6b7280;margin-bottom:32px}input{width:100%;padding:16px;border:2px solid #e5e7eb;border-radius:32px;margin-bottom:16px;outline:none}input:focus{border-color:#667eea}button{width:100%;padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:32px;cursor:pointer}.error{background:#fee2e2;color:#dc2626;padding:12px;border-radius:24px;margin-bottom:20px}.footer{margin-top:24px}a{color:#667eea}.google-btn{background:#fff;color:#333;border:1px solid #ddd;margin-top:10px}.google-btn:hover{background:#eee}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:rgba(255,255,255,0.95);border-radius:48px;padding:40px;max-width:400px;width:100%;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}h1{margin-bottom:8px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.subtitle{color:#6b7280;margin-bottom:32px}input{width:100%;padding:16px;border:2px solid #e5e7eb;border-radius:32px;margin-bottom:16px;outline:none}input:focus{border-color:#667eea}button{width:100%;padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:32px;cursor:pointer}.error{background:#fee2e2;color:#dc2626;padding:12px;border-radius:24px;margin-bottom:20px}.footer{margin-top:24px}a{color:#667eea}
 </style>
 </head>
 <body>
-<div class="card"><h1>💬 Чатик</h1><div class="subtitle">Общайся с друзьями</div>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="post"><input type="text" name="username" placeholder="Имя" required autofocus><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form><div class="footer">Нет аккаунта? <a href="/register">Регистрация</a></div><a href="/login/google" class="google-btn" style="display:inline-block; width:100%; margin-top:10px; padding:14px; border-radius:32px; text-decoration:none;">🔑 Войти через Google</a></div>
+<div class="card"><h1>💬 Чатик</h1><div class="subtitle">Общайся с друзьями</div>{% if error %}<div class="error">{{ error }}</div>{% endif %}<form method="post"><input type="text" name="username" placeholder="Имя" required autofocus><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form><div class="footer">Нет аккаунта? <a href="/register">Регистрация</a></div></div>
 </body>
 </html>'''
 
@@ -241,7 +223,6 @@ document.getElementById('avatarFileInput').onchange=function(e){
     }else{showToast('❌ Выберите изображение','error');}
     e.target.value='';
 };
-// Отправка файлов
 document.getElementById('fileBtn').onclick=()=>document.getElementById('fileInput').click();
 document.getElementById('fileInput').onchange=function(e){
     let file=e.target.files[0];
@@ -255,7 +236,6 @@ document.getElementById('fileInput').onchange=function(e){
     reader.readAsDataURL(file);
     e.target.value='';
 };
-// Голосовые сообщения
 const voiceBtn=document.getElementById('voiceBtn');
 voiceBtn.onclick=async()=>{
     if(isRecording){
@@ -287,13 +267,11 @@ voiceBtn.onclick=async()=>{
         }
     }
 };
-// Личные сообщения
 function loadDMList(){fetch('/get_dm_list').then(r=>r.json()).then(data=>{let c=document.getElementById('dmList');if(data.dms&&data.dms.length){c.innerHTML=data.dms.map(d=>`<div class="user-item" onclick="openDM('${escape(d.with)}')"><span>💬 ${escape(d.with)}</span><span style="font-size:10px;color:#94a3b8">${escape(d.last_preview)}</span></div>`).join('');}else c.innerHTML='<div class="user-item" style="color:#94a3b8">Нет диалогов</div>';});}
 function openDM(t){currentDMTarget=t;document.getElementById('dmTargetName').innerText=t;fetch('/get_dm/'+encodeURIComponent(t)).then(r=>r.json()).then(data=>{let c=document.getElementById('dmMessages');c.innerHTML=data.messages.map(m=>`<div style="margin:8px 0;text-align:${m.from===username?'right':'left'}"><div style="display:inline-block;background:${m.from===username?'#4f46e5':'#e2e8f0'};color:${m.from===username?'#fff':'#1f2937'};padding:8px 12px;border-radius:20px;max-width:80%"><strong>${escape(m.from)}</strong> (${m.time})<br>${escape(m.text)}</div></div>`).join('');c.scrollTop=c.scrollHeight;});document.getElementById('dmModal').style.display='flex';}
 document.getElementById('closeDmModal').onclick=()=>document.getElementById('dmModal').style.display='none';
 document.getElementById('dmSendBtn').onclick=()=>{let txt=document.getElementById('dmInput').value.trim();if(txt&&currentDMTarget){socket.emit('private_message',{target:currentDMTarget,text:txt});document.getElementById('dmInput').value='';}};
 socket.on('private_message',(data)=>{if(data.from===currentDMTarget||data.to===currentDMTarget){let c=document.getElementById('dmMessages');let d=document.createElement('div');d.style=`margin:8px 0;text-align:${data.from===username?'right':'left'}`;d.innerHTML=`<div style="display:inline-block;background:${data.from===username?'#4f46e5':'#e2e8f0'};color:${data.from===username?'#fff':'#1f2937'};padding:8px 12px;border-radius:20px;max-width:80%"><strong>${escape(data.from)}</strong> (${data.time})<br>${escape(data.text)}</div>`;c.appendChild(d);c.scrollTop=c.scrollHeight;}addNotification('Личное сообщение',`${data.from}: ${data.text.substring(0,30)}`);loadDMList();});
-// Эмодзи
 const emojis=['😀','😂','❤️','👍','🎉','🔥','😍','🥹','😭','🤔','👋','🙏','✨','💯','😎','🥳'];
 const picker=document.getElementById('emojiPicker');picker.innerHTML=emojis.map(e=>`<div class="emoji">${e}</div>`).join('');
 document.querySelectorAll('.emoji').forEach(el=>el.onclick=()=>{msgInput.value+=el.textContent;msgInput.focus();picker.style.display='none';});
@@ -485,7 +463,7 @@ def register():
         if name in users: return render_template_string(REGISTER_HTML, error='Имя занято')
         if len(name)<3 or len(name)>20: return render_template_string(REGISTER_HTML, error='Имя 3-20')
         if len(pwd)<4: return render_template_string(REGISTER_HTML, error='Пароль мин 4')
-        users[name] = {'password': hashlib.sha256(pwd.encode()).hexdigest(), 'role': 'user', 'avatar': '👤', 'avatar_base64': None, 'bio': '', 'friends': [], 'requests': [], 'banned': False, 'theme': 'light', 'user_id': generate_short_id(), 'id_change_count': 0, 'last_id_change': None, 'muted_until': None, 'email': None}
+        users[name] = {'password': hashlib.sha256(pwd.encode()).hexdigest(), 'role': 'user', 'avatar': '👤', 'avatar_base64': None, 'bio': '', 'friends': [], 'requests': [], 'banned': False, 'theme': 'light', 'user_id': generate_short_id(), 'id_change_count': 0, 'last_id_change': None, 'muted_until': None}
         save_users(users); return redirect(url_for('login'))
     return render_template_string(REGISTER_HTML)
 
@@ -659,56 +637,6 @@ def get_dm(target):
     if 'username' not in session: return jsonify({'messages': []})
     name = session['username']; key = f"{min(name,target)}_{max(name,target)}"
     return jsonify({'messages': dms.get(key, [])})
-
-# -------------------------- OAuth Google --------------------------
-@app.route('/login/google')
-def google_login():
-    redirect_uri = url_for('google_authorized', _external=True)
-    return google.authorize_redirect(redirect_uri)
-
-@app.route('/login/google/authorized')
-def google_authorized():
-    token = google.authorize_access_token()
-    resp = google.get('userinfo')
-    user_info = resp.json()
-    email = user_info['email']
-    name = user_info.get('name', email.split('@')[0])
-    # Ищем пользователя по email
-    found_username = None
-    for uname, udata in users.items():
-        if udata.get('email') == email:
-            found_username = uname
-            break
-    if found_username:
-        session['username'] = found_username
-        return redirect(url_for('index'))
-    else:
-        # Создаём нового пользователя
-        base_name = name[:20].replace(' ', '')
-        username = base_name
-        counter = 1
-        while username in users:
-            username = f"{base_name}{counter}"
-            counter += 1
-        users[username] = {
-            'password': None,
-            'role': 'user',
-            'avatar': '👤',
-            'avatar_base64': None,
-            'bio': '',
-            'friends': [],
-            'requests': [],
-            'banned': False,
-            'theme': 'light',
-            'user_id': generate_short_id(),
-            'id_change_count': 0,
-            'last_id_change': None,
-            'muted_until': None,
-            'email': email
-        }
-        save_users(users)
-        session['username'] = username
-        return redirect(url_for('index'))
 
 # -------------------------- SOCKET.IO --------------------------
 @socketio.on('private_message')
