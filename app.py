@@ -1,4 +1,4 @@
-import os
+Мimport os
 import json
 import hashlib
 import random
@@ -116,7 +116,7 @@ CHAT_HTML = '''
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"><title>Чатик</title><script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script><style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#1e1b4b,#4c1d95);height:100vh;display:flex;overflow:hidden;transition:background 0.3s}body.dark{background:#0f0f0f}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:linear-gradient(135deg,#1e1b4b,#4c1d95);height:100vh;display:flex;overflow-x:hidden;transition:background 0.3s}body.dark{background:#0f0f0f}
 .sidebar{width:280px;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-right:1px solid rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow-y:auto;transition:0.3s;z-index:10}body.dark .sidebar{background:#1a1a1a;color:#fff;border-color:#333}
 .user-card{text-align:center;padding:24px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;margin-bottom:16px;transition:transform 0.2s}.user-card:active{transform:scale(0.98)}body.dark .user-card{background:linear-gradient(135deg,#4f46e5,#6d28d9)}
 .user-avatar{width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;overflow:hidden}.user-avatar img{width:100%;height:100%;object-fit:cover}
@@ -124,7 +124,7 @@ CHAT_HTML = '''
 .section-title{font-weight:600;padding:16px 20px 8px 20px;color:#475569;font-size:12px;text-transform:uppercase}body.dark .section-title{color:#94a3b8}
 .room-item,.user-item{padding:12px 20px;margin:4px 12px;border-radius:16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:0.2s}.room-item:hover,.user-item:hover{background:rgba(0,0,0,0.05)}body.dark .room-item:hover,body.dark .user-item:hover{background:rgba(255,255,255,0.1)}.room-item.active{background:#4f46e5;color:#fff}.delete-room{background:#ef4444;border:none;border-radius:20px;padding:4px 8px;color:#fff;margin-left:auto;cursor:pointer;font-size:10px;transition:0.1s}.delete-room:active{transform:scale(0.9)}
 .add-room{display:flex;gap:8px;margin:12px}.add-room input{flex:1;padding:10px;border-radius:40px;border:1px solid #ddd;outline:none;transition:0.2s}body.dark .add-room input{background:#333;color:#fff;border-color:#555}.add-room input:focus{border-color:#4f46e5}.add-room button{background:#4f46e5;color:#fff;border:none;border-radius:40px;padding:8px 20px;cursor:pointer;transition:0.1s}.add-room button:active{transform:scale(0.95)}
-.chat-area{flex:1;display:flex;flex-direction:column;background:#fff;transition:0.3s}body.dark .chat-area{background:#0a0a0a}
+.chat-area{flex:1;display:flex;flex-direction:column;background:#fff;transition:0.3s;overflow-x:hidden}body.dark .chat-area{background:#0a0a0a}
 .chat-header{padding:12px 20px;background:#fff;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}body.dark .chat-header{background:#1a1a1a;border-color:#333;color:#fff}
 .top-bar{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
 .users-count{background:#4f46e5;padding:4px 10px;border-radius:20px;font-size:12px;color:#fff;transition:0.1s;cursor:default}
@@ -246,6 +246,30 @@ CHAT_HTML = '''
 </div>
 
 <script>
+// Глобальная функция для просмотра профиля (доступна в onclick)
+window.showUserProfile = function(name) {
+    fetch('/user_info/'+encodeURIComponent(name)).then(r=>r.json()).then(data=>{
+        let actions=`
+            <button onclick="reportUser('${name}')" style="background:#ef4444;color:#fff">⚠️ Пожаловаться</button>
+            ${role==='owner'||role==='admin'?`<button id="givePrivilegeBtn" style="background:#10b981;color:#fff">⭐ Выдать привилегию</button><button id="removePrivilegeBtn" style="background:#f59e0b;color:#fff">🔻 Снять привилегию</button>`:''}
+        `;
+        let avatarHtml=data.avatar_base64?`<img src="${data.avatar_base64}">`:'👤';
+        document.getElementById('userModalContent').innerHTML=`
+            <div class="profile-avatar">${avatarHtml}</div>
+            <div class="profile-name">${escape(data.username)}</div>
+            <div class="profile-role">${data.role_display}</div>
+            <div class="profile-id" onclick="copyId('${data.user_id}')">🆔 ID: ${escape(data.user_id)} (скопировать)</div>
+            <div class="profile-bio">📝 ${escape(data.bio||'Нет описания')}</div>
+            <div class="profile-actions" id="profileActions">${actions}</div>
+        `;
+        document.getElementById('userModal').style.display='flex';
+        if(role==='owner'||role==='admin'){
+            document.getElementById('givePrivilegeBtn').onclick=()=>openRoleModal(name,'give');
+            document.getElementById('removePrivilegeBtn').onclick=()=>openRoleModal(name,'remove');
+        }
+    });
+};
+
 let socket=io(),currentRoom='Главная',username='{{ username }}',role='{{ role }}',user_id='{{ user_id }}',typingUsers={};
 let notifications=[],pendingFriendRequests=[],currentDMTarget=null;
 let mediaRecorder=null,audioChunks=[],isRecording=false;
@@ -419,28 +443,6 @@ picker.innerHTML=emojis.map(e=>`<div class="emoji">${e}</div>`).join('');
 document.querySelectorAll('.emoji').forEach(el=>el.onclick=()=>{msgInput.value+=el.textContent;msgInput.focus();picker.style.display='none';});
 document.getElementById('emojiBtn').onclick=(e)=>{e.stopPropagation();picker.style.display=picker.style.display==='grid'?'none':'grid';};
 document.addEventListener('click',(e)=>{if(!e.target.closest('#emojiBtn')&&!e.target.closest('.emoji-picker'))picker.style.display='none';});
-function showUserProfile(name){
-    fetch('/user_info/'+encodeURIComponent(name)).then(r=>r.json()).then(data=>{
-        let actions=`
-            <button onclick="reportUser('${name}')" style="background:#ef4444;color:#fff">⚠️ Пожаловаться</button>
-            ${role==='owner'||role==='admin'?`<button id="givePrivilegeBtn" style="background:#10b981;color:#fff">⭐ Выдать привилегию</button><button id="removePrivilegeBtn" style="background:#f59e0b;color:#fff">🔻 Снять привилегию</button>`:''}
-        `;
-        let avatarHtml=data.avatar_base64?`<img src="${data.avatar_base64}">`:'👤';
-        document.getElementById('userModalContent').innerHTML=`
-            <div class="profile-avatar">${avatarHtml}</div>
-            <div class="profile-name">${escape(data.username)}</div>
-            <div class="profile-role">${data.role_display}</div>
-            <div class="profile-id" onclick="copyId('${data.user_id}')">🆔 ID: ${escape(data.user_id)} (скопировать)</div>
-            <div class="profile-bio">📝 ${escape(data.bio||'Нет описания')}</div>
-            <div class="profile-actions" id="profileActions">${actions}</div>
-        `;
-        document.getElementById('userModal').style.display='flex';
-        if(role==='owner'||role==='admin'){
-            document.getElementById('givePrivilegeBtn').onclick=()=>openRoleModal(name,'give');
-            document.getElementById('removePrivilegeBtn').onclick=()=>openRoleModal(name,'remove');
-        }
-    });
-}
 function reportUser(target){
     let reason=prompt('Причина жалобы:');
     if(reason) fetch('/report_user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,reason})}).then(r=>r.json()).then(d=>showToast(d.message,d.success?'success':'error'));
@@ -483,7 +485,6 @@ document.getElementById('closeReportsModal').onclick=()=>document.getElementById
 function updateAllUsersCount(){
     fetch('/registered_users_count').then(r=>r.json()).then(data=>{document.getElementById('regUsersCount').innerText=`👥 Всего: ${data.count}`;});
 }
-// Скелетон при загрузке сообщений
 function showSkeleton(){
     for(let i=0;i<3;i++){
         let skel=document.createElement('div');skel.className='skeleton';
@@ -497,7 +498,7 @@ function addAudioMessage(id,name,audio,time,isOwn,avatar,avb){
     let badge='';if(name==='MrAizex')badge='<span class="badge-owner">ВЛ</span>';else if(name==='dimooon')badge='<span class="badge-admin">АДМ</span>';
     let ahtml=avb?`<img src="${avb}">`:avatar||'👤';
     div.innerHTML=`
-        <div class="message-avatar" onclick="showUserProfile('${escape(name)}')">${ahtml}</div>
+        <div class="message-avatar" onclick="window.showUserProfile('${escape(name)}')">${ahtml}</div>
         <div class="message-content">
             <div class="message-name">${escape(name)}${badge}</div>
             <div class="message-text"><audio class="audio-player" controls src="${audio}"></audio></div>
@@ -516,7 +517,7 @@ function addMessage(id,name,text,time,isOwn,avatar,avb,isFile,fdata,fname,isImg,
     else if(isFile){if(isImg) content=`<div><img src="${fdata}" class="image-preview" onclick="window.open('${fdata}')"></div>`; else content=`<div class="file-message"><span>📄</span><a href="${fdata}" download="${escape(fname)}">${escape(fname)}</a></div>`;}
     else content=escape(text);
     div.innerHTML=`
-        <div class="message-avatar" onclick="showUserProfile('${escape(name)}')">${ahtml}</div>
+        <div class="message-avatar" onclick="window.showUserProfile('${escape(name)}')">${ahtml}</div>
         <div class="message-content">
             <div class="message-name">${escape(name)}${badge}</div>
             <div class="message-text">${content}</div>
@@ -563,11 +564,11 @@ socket.on('rooms',l=>{
 });
 socket.on('users',l=>{
     let c=document.getElementById('usersList');
-    c.innerHTML=l.map(u=>`<div class="user-item" onclick="showUserProfile('${escape(u.name)}')"><span class="online-dot"></span> ${u.avatar_base64?`<img src="${u.avatar_base64}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">`:u.avatar||'👤'} ${escape(u.name)} ${u.role==='owner'?'<span class="badge-owner">ВЛ</span>':(u.role==='admin'?'<span class="badge-admin">АДМ</span>':(u.role==='moderator'?'<span class="badge-moderator">МОД</span>':''))}</div>`).join('');
+    c.innerHTML=l.map(u=>`<div class="user-item" onclick="window.showUserProfile('${escape(u.name)}')"><span class="online-dot"></span> ${u.avatar_base64?`<img src="${u.avatar_base64}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">`:u.avatar||'👤'} ${escape(u.name)} ${u.role==='owner'?'<span class="badge-owner">ВЛ</span>':(u.role==='admin'?'<span class="badge-admin">АДМ</span>':(u.role==='moderator'?'<span class="badge-moderator">МОД</span>':''))}</div>`).join('');
     loadDMList();
     updateAllUsersCount();
 });
-socket.on('friends',l=>{let c=document.getElementById('friendsList');if(c)c.innerHTML=l.map(f=>`<div class="user-item" onclick="showUserProfile('${escape(f.name)}')">👫 ${escape(f.name)}</div>`).join('');});
+socket.on('friends',l=>{let c=document.getElementById('friendsList');if(c)c.innerHTML=l.map(f=>`<div class="user-item" onclick="window.showUserProfile('${escape(f.name)}')">👫 ${escape(f.name)}</div>`).join('');});
 socket.on('typing',d=>{if(d.typing)typingUsers[d.name]=true;else delete typingUsers[d.name];let n=Object.keys(typingUsers).filter(n=>n!==username);document.getElementById('typingStatus').innerText=n.length?(n.length===1?`${n[0]} печатает...`:`${n.length} человек печатают...`):'';});
 socket.on('update_online_users',()=>{});
 document.getElementById('sendBtn').onclick=()=>{let t=msgInput.value.trim();if(t){socket.emit('message',{text:t,room:currentRoom});msgInput.value='';}};
@@ -622,7 +623,7 @@ loadRequests();socket.emit('get_rooms');socket.emit('get_users');
 </html>
 '''
 
-# -------------------------- МАРШРУТЫ (без изменений) --------------------------
+# -------------------------- МАРШРУТЫ --------------------------
 @app.route('/')
 def index():
     if 'username' not in session: return redirect(url_for('login'))
